@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# YOLO Models (large files)
+*.pt
+*.onnx
+*.engine
+runs/
+weights/
+
+# Webots
+.*.wbproj
+*.wbproj
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and data
+*.log
+logs/
+data/
+*.csv
+
+# Temporary files
+tmp/
+temp/
+*.tmp
