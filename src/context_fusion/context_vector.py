@@ -5,6 +5,7 @@ Fuses multimodal sensor data (GPS, YOLO, Audio) into structured context vectors
 
 import time
 import json
+import numpy as np
 from typing import Dict, List, Optional, Tuple
 
 
@@ -24,7 +25,8 @@ class ContextVector:
         position: Optional[Tuple[float, float]] = None,
         zone_info: Optional[Dict] = None,
         visual_detections: Optional[List[Dict]] = None,
-        audio_events: Optional[List[Dict]] = None
+        audio_events: Optional[List[Dict]] = None,
+        keypoints: Optional[np.ndarray] = None
     ) -> Dict:
         """
         FR2.3: Create unified context vector from multimodal inputs
@@ -35,6 +37,7 @@ class ContextVector:
             zone_info: Semantic zone information from FloorPlanManager
             visual_detections: YOLO object detections
             audio_events: Yamnet audio event classifications
+            keypoints: Normalized pose keypoints (51-dim numpy array)
 
         Returns:
             Context vector as JSON-serializable dict:
@@ -50,7 +53,8 @@ class ContextVector:
                 "audio_events": [
                     {"event": "Television", "confidence": 0.78}
                 ],
-                "context_summary": "living_room | 2 objects | Television"
+                "keypoints": [x0, y0, c0, ..., x16, y16, c16],  # 51-dim
+                "context_summary": "living_room | 2 objects | Television | pose:yes"
             }
         """
         if timestamp is None:
@@ -90,10 +94,19 @@ class ContextVector:
                     "confidence": round(event["confidence"], 2)
                 })
 
+        # Process keypoints
+        keypoints_data = None
+        has_pose = False
+        if keypoints is not None:
+            # Convert numpy array to list for JSON serialization
+            keypoints_data = keypoints.tolist() if isinstance(keypoints, np.ndarray) else list(keypoints)
+            has_pose = True
+
         # Create context summary (human-readable)
         visual_count = len(visual_events)
         audio_label = audio_events_data[0]["event"] if audio_events_data else "None"
-        context_summary = f"{zone_id} | {visual_count} objects | {audio_label}"
+        pose_label = "pose:yes" if has_pose else "pose:no"
+        context_summary = f"{zone_id} | {visual_count} objects | {audio_label} | {pose_label}"
 
         # Assemble full context vector
         context_vector = {
@@ -103,6 +116,7 @@ class ContextVector:
             "zone_id": zone_id,
             "visual_events": visual_events,
             "audio_events": audio_events_data,
+            "keypoints": keypoints_data,  # 51-dim normalized pose (or None)
             "context_summary": context_summary
         }
 

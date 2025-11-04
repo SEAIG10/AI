@@ -19,7 +19,7 @@ class DatasetBuilder:
     FR6.3: Build training datasets from scenarios
 
     Converts JSON scenarios → (X, y) numerical data
-    X: (N, 30, 108) - N sequences, each 30 timesteps of 108-dim vectors
+    X: (N, 30, 159) - N sequences, each 30 timesteps of 159-dim vectors
     y: (N, 7) - N labels, 7 zones (binary: dirty or clean)
     """
 
@@ -36,7 +36,7 @@ class DatasetBuilder:
             scenario: Scenario dict from ScenarioGenerator
 
         Returns:
-            X: (30, 108) sequence
+            X: (30, 159) sequence
             y: (7,) label
         """
         # Encode sequence
@@ -45,10 +45,10 @@ class DatasetBuilder:
             vector = self.encoder.encode(timestep)
             sequence_vectors.append(vector)
 
-        X = np.array(sequence_vectors, dtype=np.float32)  # (30, 108)
+        X = np.array(sequence_vectors, dtype=np.float32)  # (30, 159)
         y = np.array(scenario["label"], dtype=np.float32)  # (7,)
 
-        assert X.shape == (30, 108), f"Expected X shape (30, 108), got {X.shape}"
+        assert X.shape == (30, 159), f"Expected X shape (30, 159), got {X.shape}"
         assert y.shape == (7,), f"Expected y shape (7,), got {y.shape}"
 
         return X, y
@@ -70,9 +70,9 @@ class DatasetBuilder:
             train_split: Train/val split ratio
 
         Returns:
-            X_train: (N_train, 30, 108)
+            X_train: (N_train, 30, 159)
             y_train: (N_train, 7)
-            X_val: (N_val, 30, 108)
+            X_val: (N_val, 30, 159)
             y_val: (N_val, 7)
         """
         print("=" * 70)
@@ -218,7 +218,7 @@ def test_dataset_builder():
 
     # Verify shapes
     print(f"\n[Verification]")
-    print(f"X_train shape: {X_train.shape} (expected: (N, 30, 108))")
+    print(f"X_train shape: {X_train.shape} (expected: (N, 30, 159))")
     print(f"y_train shape: {y_train.shape} (expected: (N, 7))")
     print(f"X_val shape: {X_val.shape}")
     print(f"y_val shape: {y_val.shape}")

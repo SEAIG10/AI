@@ -18,7 +18,7 @@ class FedPerGRUModel:
     - Base Layer (shared): GRU(64) → GRU(32)
     - Head Layer (personalized): Dense(16) → Dense(7, sigmoid)
 
-    Input: (batch, 30, 108) - 30 timesteps of 108-dim context vectors
+    Input: (batch, 30, 159) - 30 timesteps of 159-dim context vectors
     Output: (batch, 7) - Pollution probability for 7 zones
     """
 
@@ -42,7 +42,7 @@ class FedPerGRUModel:
             Compiled Keras model
         """
         # Input
-        inputs = layers.Input(shape=(30, 108), name='context_sequence')
+        inputs = layers.Input(shape=(30, 159), name='context_sequence')
 
         # ===== FR3.2a: Base Layer (Shared Feature Extraction) =====
         # GRU Layer 1: 64 units, return sequences for next GRU
@@ -105,9 +105,9 @@ class FedPerGRUModel:
         Train GRU model
 
         Args:
-            X_train: Training sequences (N, 30, 108)
+            X_train: Training sequences (N, 30, 159)
             y_train: Training labels (N, 7)
-            X_val: Validation sequences (N, 30, 108)
+            X_val: Validation sequences (N, 30, 159)
             y_val: Validation labels (N, 7)
             epochs: Number of training epochs
             batch_size: Batch size
@@ -162,7 +162,7 @@ class FedPerGRUModel:
         Predict pollution probabilities
 
         Args:
-            X: Input sequences (N, 30, 108)
+            X: Input sequences (N, 30, 159)
             threshold: Threshold for binary classification
 
         Returns:
@@ -180,7 +180,7 @@ class FedPerGRUModel:
         Evaluate model performance
 
         Args:
-            X_test: Test sequences (N, 30, 108)
+            X_test: Test sequences (N, 30, 159)
             y_test: Test labels (N, 7)
             zone_names: List of zone names for reporting
 
@@ -273,9 +273,9 @@ def test_gru_model():
     print("=" * 70 + "\n")
 
     # Create dummy data
-    X_train = np.random.randn(100, 30, 108).astype(np.float32)
+    X_train = np.random.randn(100, 30, 159).astype(np.float32)
     y_train = np.random.randint(0, 2, (100, 7)).astype(np.float32)
-    X_val = np.random.randn(20, 30, 108).astype(np.float32)
+    X_val = np.random.randn(20, 30, 159).astype(np.float32)
     y_val = np.random.randint(0, 2, (20, 7)).astype(np.float32)
 
     print("[1] Creating model...")
@@ -295,7 +295,7 @@ def test_gru_model():
     )
 
     print("\n[4] Testing prediction...")
-    X_test = np.random.randn(10, 30, 108).astype(np.float32)
+    X_test = np.random.randn(10, 30, 159).astype(np.float32)
     y_pred = model.predict(X_test)
     print(f"  Input shape: {X_test.shape}")
     print(f"  Output shape: {y_pred.shape}")

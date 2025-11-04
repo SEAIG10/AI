@@ -10,14 +10,15 @@ from typing import Dict, List, Optional
 
 class ContextEncoder:
     """
-    FR2.3.3: Encodes JSON Context Vectors into fixed 108-dimensional numerical vectors
+    FR2.3.3: Encodes JSON Context Vectors into fixed 159-dimensional numerical vectors
 
     Vector composition:
     - Time features: 10 dimensions
     - Spatial features: 7 dimensions (zone one-hot)
     - Visual features: 85 dimensions (COCO 80 + custom 5, multi-hot)
     - Audio features: 6 dimensions (one-hot)
-    Total: 108 dimensions
+    - Keypoints features: 51 dimensions (raw normalized pose)
+    Total: 159 dimensions
     """
 
     def __init__(self):
@@ -76,13 +77,13 @@ class ContextEncoder:
 
     def encode(self, context: Dict) -> np.ndarray:
         """
-        Encode JSON context vector to 108-dimensional numerical vector
+        Encode JSON context vector to 159-dimensional numerical vector
 
         Args:
             context: JSON context dict from ContextVector.create_context()
 
         Returns:
-            108-dimensional numpy array [time(10) + spatial(7) + visual(85) + audio(6)]
+            159-dimensional numpy array [time(10) + spatial(7) + visual(85) + audio(6) + keypoints(51)]
         """
         # Extract timestamp
         timestamp = context.get("timestamp", 0)
@@ -92,16 +93,18 @@ class ContextEncoder:
         spatial_features = self._encode_spatial(context)    # 7 dim
         visual_features = self._encode_visual(context)      # 85 dim
         audio_features = self._encode_audio(context)        # 6 dim
+        keypoints_features = self._encode_keypoints(context)  # 51 dim
 
         # Concatenate all features
         vector = np.concatenate([
             time_features,
             spatial_features,
             visual_features,
-            audio_features
+            audio_features,
+            keypoints_features
         ])
 
-        assert vector.shape == (108,), f"Expected shape (108,), got {vector.shape}"
+        assert vector.shape == (159,), f"Expected shape (159,), got {vector.shape}"
         return vector.astype(np.float32)
 
     def _encode_time(self, timestamp: float) -> np.ndarray:
@@ -251,6 +254,33 @@ class ContextEncoder:
 
         return vector
 
+    def _encode_keypoints(self, context: Dict) -> np.ndarray:
+        """
+        Encode raw pose keypoints (51 dimensions)
+        Direct pass-through of normalized keypoint data
+
+        Returns:
+            51-dimensional vector (17 keypoints × 3 values each)
+        """
+        keypoints_data = context.get("keypoints", None)
+
+        # If no keypoints, return zeros
+        if keypoints_data is None:
+            return np.zeros(51, dtype=np.float32)
+
+        # Convert to numpy array if needed
+        if isinstance(keypoints_data, list):
+            keypoints_array = np.array(keypoints_data, dtype=np.float32)
+        else:
+            keypoints_array = keypoints_data.astype(np.float32)
+
+        # Ensure correct shape
+        if keypoints_array.shape != (51,):
+            print(f"Warning: Expected keypoints shape (51,), got {keypoints_array.shape}. Using zeros.")
+            return np.zeros(51, dtype=np.float32)
+
+        return keypoints_array
+
     def encode_batch(self, contexts: List[Dict]) -> np.ndarray:
         """
         Encode a batch of contexts
@@ -259,7 +289,7 @@ class ContextEncoder:
             contexts: List of JSON context dicts
 
         Returns:
-            (N, 108) numpy array
+            (N, 159) numpy array
         """
         return np.array([self.encode(ctx) for ctx in contexts], dtype=np.float32)
 
@@ -268,7 +298,7 @@ class ContextEncoder:
         Get human-readable feature names for debugging
 
         Returns:
-            List of 108 feature names
+            List of 159 feature names
         """
         names = []
 
@@ -289,6 +319,16 @@ class ContextEncoder:
         # Audio features (6)
         names.extend([f"audio_{event}" for event in self.audio_events])
 
+        # Keypoints features (51)
+        keypoint_names = [
+            "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+            "left_wrist", "right_wrist", "left_hip", "right_hip",
+            "left_knee", "right_knee", "left_ankle", "right_ankle"
+        ]
+        for kpt_name in keypoint_names:
+            names.extend([f"kpt_{kpt_name}_x", f"kpt_{kpt_name}_y", f"kpt_{kpt_name}_conf"])
+
         return names
 
     def decode_debug(self, vector: np.ndarray) -> Dict:
@@ -296,7 +336,7 @@ class ContextEncoder:
         Convert numerical vector back to human-readable format (for debugging)
 
         Args:
-            vector: 108-dimensional numpy array
+            vector: 159-dimensional numpy array
 
         Returns:
             Dict with decoded features
@@ -335,11 +375,21 @@ class ContextEncoder:
             "event": self.audio_events[audio_idx]
         }
 
+        # Keypoints features
+        keypoints_vector = vector[108:159]
+        has_pose = np.any(keypoints_vector != 0)
+        keypoints_features = {
+            "has_pose": has_pose,
+            "non_zero_values": int(np.count_nonzero(keypoints_vector)),
+            "raw_data_shape": "(51,)"
+        }
+
         return {
             "time": time_features,
             "spatial": spatial_features,
             "visual": visual_features,
-            "audio": audio_features
+            "audio": audio_features,
+            "keypoints": keypoints_features
         }
 
 

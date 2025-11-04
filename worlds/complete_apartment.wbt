@@ -83,6 +83,7 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/lights/protos/CeilingSpotLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/trees/protos/Cypress.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/humans/pedestrian/protos/Pedestrian.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/softbank/nao/protos/Nao.proto"
 
 WorldInfo {
   info [
@@ -2406,4 +2407,11 @@ Pedestrian {
   pantsColor 0.2 0.2 0.3
   shoesColor 0.1 0.1 0.1
   enableBoundingObject TRUE
+}
+Nao {
+  translation -6.5 -1.0 0.334
+  rotation 0 0 1 -1.5708
+  name "nao_robot"
+  controller "nao_sitting_controller"
+  controllerArgs []
 }

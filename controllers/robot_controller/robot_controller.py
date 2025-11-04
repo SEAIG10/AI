@@ -91,14 +91,21 @@ class RVCRobot:
             self.right_motor.setVelocity(0.0)
             print("Motors initialized successfully!")
 
-        # Initialize YOLO model
-        print("Loading YOLOv8 model...")
+        # Initialize YOLO models
+        print("Loading YOLOv8 models...")
         try:
-            self.yolo_model = YOLO('yolov8n.pt')  # Use nano model for speed
-            print("YOLOv8 model loaded successfully!")
+            self.yolo_model = YOLO('yolov8n.pt')  # Object detection
+            print("✓ YOLOv8n (object detection) loaded")
         except Exception as e:
             print(f"Warning: Could not load YOLO model: {e}")
             self.yolo_model = None
+
+        try:
+            self.yolo_pose_model = YOLO('yolov8n-pose.pt')  # Pose estimation
+            print("✓ YOLOv8n-pose (human pose) loaded")
+        except Exception as e:
+            print(f"Warning: Could not load YOLO-pose model: {e}")
+            self.yolo_pose_model = None
 
         # Initialize Context Fusion (FR2.3: Multimodal Context Fusion)
         try:
@@ -267,15 +274,24 @@ class RVCRobot:
             cv2.waitKey(1)  # Required for cv2.imshow to work
 
     def process_vision(self, image):
-        """Process camera image with YOLO model"""
-        if image is None or self.yolo_model is None:
-            return None
+        """
+        Process camera image with YOLO models
 
-        # Run YOLO inference
-        results = self.yolo_model(image, verbose=False)  # verbose=False to reduce console spam
+        Returns:
+            tuple: (detections, pose_data)
+                detections: list of object detections
+                pose_data: dict with human pose keypoints or None
+        """
+        if image is None or self.yolo_model is None:
+            return None, None
+
+        # Run YOLOv8n for object detection
+        results = self.yolo_model(image, verbose=False)
 
         # Extract detection results
         detections = []
+        person_detected = False
+
         if len(results) > 0:
             result = results[0]
             boxes = result.boxes
@@ -295,7 +311,168 @@ class RVCRobot:
                     'class': class_name
                 })
 
-        return detections
+                # Check if person detected
+                if class_name == 'person':
+                    person_detected = True
+
+        # Run YOLOv8n-pose if person detected (Option 3: Conditional execution)
+        pose_data = None
+        if person_detected and self.yolo_pose_model is not None:
+            try:
+                pose_results = self.yolo_pose_model(image, verbose=False)
+                if len(pose_results) > 0:
+                    pose_result = pose_results[0]
+                    if hasattr(pose_result, 'keypoints') and pose_result.keypoints is not None:
+                        # Extract keypoints (17 points x, y, confidence)
+                        kpts = pose_result.keypoints.data.cpu().numpy()
+                        if len(kpts) > 0:
+                            pose_data = {
+                                'keypoints': kpts[0],  # First person's keypoints (17, 3)
+                                'confidence': float(pose_result.boxes.conf[0]) if len(pose_result.boxes.conf) > 0 else 0.0
+                            }
+            except Exception as e:
+                print(f"Pose estimation error: {e}")
+                pose_data = None
+
+        return detections, pose_data
+
+    def normalize_keypoints(self, keypoints):
+        """
+        Normalize keypoints to be body-centric and scale-invariant
+
+        Args:
+            keypoints: (17, 3) numpy array [x, y, confidence]
+
+        Returns:
+            (51,) flattened normalized keypoints, or None if invalid
+        """
+        import numpy as np
+
+        # Confidence threshold
+        confidence_threshold = 0.3
+
+        # Get hip center as reference point
+        left_hip = keypoints[11]
+        right_hip = keypoints[12]
+
+        # Check if hips are visible
+        if left_hip[2] < confidence_threshold or right_hip[2] < confidence_threshold:
+            # Can't normalize without hips, return zeros
+            return np.zeros(51, dtype=np.float32)
+
+        # Hip center
+        hip_center_x = (left_hip[0] + right_hip[0]) / 2
+        hip_center_y = (left_hip[1] + right_hip[1]) / 2
+
+        # Body scale: distance from hip to nose
+        nose = keypoints[0]
+        if nose[2] > confidence_threshold:
+            body_height = np.sqrt(
+                (nose[0] - hip_center_x)**2 +
+                (nose[1] - hip_center_y)**2
+            )
+        else:
+            # Fallback: use shoulder-hip distance
+            left_shoulder = keypoints[5]
+            right_shoulder = keypoints[6]
+            if left_shoulder[2] > confidence_threshold:
+                body_height = np.sqrt(
+                    (left_shoulder[0] - hip_center_x)**2 +
+                    (left_shoulder[1] - hip_center_y)**2
+                )
+            else:
+                body_height = 100.0  # Default scale
+
+        # Avoid division by zero
+        body_height = max(body_height, 1.0)
+
+        # Normalize all keypoints
+        normalized = []
+        for i in range(17):
+            x, y, conf = keypoints[i]
+
+            if conf < confidence_threshold:
+                # Low confidence: set to zero
+                normalized.extend([0.0, 0.0, 0.0])
+            else:
+                # Normalize: center at hip, scale by body height
+                x_norm = (x - hip_center_x) / body_height
+                y_norm = (y - hip_center_y) / body_height
+                normalized.extend([x_norm, y_norm, conf])
+
+        return np.array(normalized, dtype=np.float32)
+
+    def infer_activity_from_pose(self, pose_data):
+        """
+        Infer human activity from pose keypoints
+
+        Keypoints (COCO 17-point format):
+        0: nose, 1: left_eye, 2: right_eye, 3: left_ear, 4: right_ear,
+        5: left_shoulder, 6: right_shoulder, 7: left_elbow, 8: right_elbow,
+        9: left_wrist, 10: right_wrist, 11: left_hip, 12: right_hip,
+        13: left_knee, 14: right_knee, 15: left_ankle, 16: right_ankle
+
+        Returns:
+            str: Activity label ("standing", "sitting", "cooking", "eating", "unknown")
+        """
+        if pose_data is None:
+            return "unknown"
+
+        keypoints = pose_data['keypoints']  # Shape: (17, 3) - (x, y, confidence)
+
+        # Extract key body parts with confidence threshold
+        confidence_threshold = 0.5
+
+        def get_point(idx):
+            if keypoints[idx][2] > confidence_threshold:
+                return (keypoints[idx][0], keypoints[idx][1])
+            return None
+
+        # Get critical points
+        left_shoulder = get_point(5)
+        right_shoulder = get_point(6)
+        left_hip = get_point(11)
+        right_hip = get_point(12)
+        left_knee = get_point(13)
+        right_knee = get_point(14)
+        left_wrist = get_point(9)
+        right_wrist = get_point(10)
+        nose = get_point(0)
+
+        # Check if we have enough points
+        if not all([left_hip, right_hip, left_knee, right_knee]):
+            return "unknown"
+
+        # Calculate hip and knee positions
+        hip_y = (left_hip[1] + right_hip[1]) / 2
+        knee_y = (left_knee[1] + right_knee[1]) / 2
+
+        # Sitting detection: knees are close to or above hip level (smaller y = higher in image)
+        hip_knee_ratio = abs(knee_y - hip_y) / max(abs(hip_y), 1)
+
+        if hip_knee_ratio < 0.3:  # Knees very close to hips
+            activity = "sitting"
+        else:
+            activity = "standing"
+
+        # Cooking detection: hands near hip level (near counter/sink)
+        if left_wrist and right_wrist and left_hip and right_hip:
+            avg_hip_y = (left_hip[1] + right_hip[1]) / 2
+            left_wrist_near_hip = abs(left_wrist[1] - avg_hip_y) < 100
+            right_wrist_near_hip = abs(right_wrist[1] - avg_hip_y) < 100
+
+            if (left_wrist_near_hip or right_wrist_near_hip) and activity == "standing":
+                activity = "cooking"
+
+        # Eating detection: hands near head level
+        if left_wrist and nose:
+            if abs(left_wrist[1] - nose[1]) < 80:
+                activity = "eating"
+        if right_wrist and nose:
+            if abs(right_wrist[1] - nose[1]) < 80:
+                activity = "eating"
+
+        return activity
 
     def process_audio(self, audio):
         """
@@ -380,8 +557,13 @@ class RVCRobot:
             audio = self.get_audio_sample()
 
             # FR2: Multimodal sensing
-            detections = self.process_vision(image)  # FR2.1: Visual
+            detections, pose_data = self.process_vision(image)  # FR2.1: Visual (objects + pose)
             audio_events = self.process_audio(audio)  # FR2.2: Audio
+
+            # Normalize keypoints if available (Option 1: Raw keypoints to GRU)
+            keypoints_normalized = None
+            if pose_data:
+                keypoints_normalized = self.normalize_keypoints(pose_data['keypoints'])
 
             # Display camera view with detections
             self.display_camera_view(image, detections)
@@ -411,6 +593,13 @@ class RVCRobot:
                 else:
                     print("Visual: No objects detected")
 
+                # Pose keypoints (raw data to GRU)
+                if pose_data:
+                    print(f"Pose: Detected (conf: {pose_data['confidence']:.2f})")
+                    if keypoints_normalized is not None:
+                        non_zero = (keypoints_normalized != 0).sum()
+                        print(f"  Keypoints: {non_zero}/51 values (normalized)")
+
                 # FR2.2: Audio events
                 if audio_events:
                     print(f"Audio: {audio_events[0]['event']} ({audio_events[0]['confidence']:.2f})")
@@ -423,7 +612,8 @@ class RVCRobot:
                         position=position,
                         zone_info=zone_info,
                         visual_detections=detections,
-                        audio_events=audio_events
+                        audio_events=audio_events,
+                        keypoints=keypoints_normalized  # Add normalized pose keypoints (51 dim)
                     )
                     row_id = self.context_db.insert_context(context)
                     print(f"Context: [{row_id}] {context['context_summary']}")
