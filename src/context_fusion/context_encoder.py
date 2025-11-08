@@ -10,15 +10,15 @@ from typing import Dict, List, Optional
 
 class ContextEncoder:
     """
-    FR2.3.3: Encodes JSON Context Vectors into fixed 159-dimensional numerical vectors
+    FR2.3.3: Encodes JSON Context Vectors into fixed 409-dimensional numerical vectors
 
     Vector composition:
     - Time features: 10 dimensions
     - Spatial features: 7 dimensions (zone one-hot)
     - Visual features: 85 dimensions (COCO 80 + custom 5, multi-hot)
-    - Audio features: 6 dimensions (one-hot)
+    - Audio features: 256 dimensions (YAMNet-256 embedding)
     - Keypoints features: 51 dimensions (raw normalized pose)
-    Total: 159 dimensions
+    Total: 409 dimensions
     """
 
     def __init__(self):
@@ -61,29 +61,21 @@ class ContextEncoder:
         ]
         self.visual_to_idx = {cls: idx for idx, cls in enumerate(self.visual_classes)}
 
-        # FR2.2.2: 6 audio events
-        self.audio_events = [
-            "Silence",    # 0
-            "Speech",     # 1
-            "Television", # 2
-            "Music",      # 3
-            "Dishes",     # 4
-            "Cooking"     # 5
-        ]
-        self.audio_to_idx = {event: idx for idx, event in enumerate(self.audio_events)}
+        # Audio: YAMNet-256 embedding (256 dimensions)
+        self.audio_embedding_dim = 256
 
         # Time of day categories (5 categories)
         self.time_of_day_labels = ["dawn", "morning", "afternoon", "evening", "night"]
 
     def encode(self, context: Dict) -> np.ndarray:
         """
-        Encode JSON context vector to 159-dimensional numerical vector
+        Encode JSON context vector to 409-dimensional numerical vector
 
         Args:
             context: JSON context dict from ContextVector.create_context()
 
         Returns:
-            159-dimensional numpy array [time(10) + spatial(7) + visual(85) + audio(6) + keypoints(51)]
+            409-dimensional numpy array [time(10) + spatial(7) + visual(85) + audio(256) + keypoints(51)]
         """
         # Extract timestamp
         timestamp = context.get("timestamp", 0)
@@ -92,7 +84,7 @@ class ContextEncoder:
         time_features = self._encode_time(timestamp)        # 10 dim
         spatial_features = self._encode_spatial(context)    # 7 dim
         visual_features = self._encode_visual(context)      # 85 dim
-        audio_features = self._encode_audio(context)        # 6 dim
+        audio_features = self._encode_audio(context)        # 256 dim (YAMNet-256 embedding)
         keypoints_features = self._encode_keypoints(context)  # 51 dim
 
         # Concatenate all features
@@ -104,7 +96,7 @@ class ContextEncoder:
             keypoints_features
         ])
 
-        assert vector.shape == (159,), f"Expected shape (159,), got {vector.shape}"
+        assert vector.shape == (409,), f"Expected shape (409,), got {vector.shape}"
         return vector.astype(np.float32)
 
     def _encode_time(self, timestamp: float) -> np.ndarray:
@@ -230,29 +222,30 @@ class ContextEncoder:
 
     def _encode_audio(self, context: Dict) -> np.ndarray:
         """
-        FR2.3.3(d): Encode audio features (6 dimensions)
-        One-hot encoding of dominant audio event
+        FR2.3.3(d): Encode audio features (256 dimensions)
+        Direct pass-through of YAMNet-256 embedding
 
         Returns:
-            6-dimensional one-hot vector
+            256-dimensional audio embedding vector (continuous values)
         """
-        audio_events = context.get("audio_events", [])
+        audio_embedding = context.get("audio_embedding", None)
 
-        # One-hot encoding (use first/dominant event)
-        vector = np.zeros(6, dtype=np.float32)
+        # If no audio embedding, return zeros (silence)
+        if audio_embedding is None:
+            return np.zeros(self.audio_embedding_dim, dtype=np.float32)
 
-        if audio_events and len(audio_events) > 0:
-            event_name = audio_events[0].get("event", "Silence")
-            if event_name in self.audio_to_idx:
-                vector[self.audio_to_idx[event_name]] = 1.0
-            else:
-                # Default to Silence if unknown
-                vector[0] = 1.0
+        # Convert to numpy array if needed
+        if isinstance(audio_embedding, list):
+            embedding_array = np.array(audio_embedding, dtype=np.float32)
         else:
-            # No audio events → Silence
-            vector[0] = 1.0
+            embedding_array = audio_embedding.astype(np.float32)
 
-        return vector
+        # Ensure correct shape
+        if embedding_array.shape != (self.audio_embedding_dim,):
+            print(f"Warning: Expected audio embedding shape ({self.audio_embedding_dim},), got {embedding_array.shape}. Using zeros.")
+            return np.zeros(self.audio_embedding_dim, dtype=np.float32)
+
+        return embedding_array
 
     def _encode_keypoints(self, context: Dict) -> np.ndarray:
         """
@@ -289,7 +282,7 @@ class ContextEncoder:
             contexts: List of JSON context dicts
 
         Returns:
-            (N, 159) numpy array
+            (N, 409) numpy array
         """
         return np.array([self.encode(ctx) for ctx in contexts], dtype=np.float32)
 
@@ -298,7 +291,7 @@ class ContextEncoder:
         Get human-readable feature names for debugging
 
         Returns:
-            List of 159 feature names
+            List of 409 feature names
         """
         names = []
 
@@ -316,8 +309,8 @@ class ContextEncoder:
         # Visual features (85)
         names.extend([f"obj_{cls}" for cls in self.visual_classes])
 
-        # Audio features (6)
-        names.extend([f"audio_{event}" for event in self.audio_events])
+        # Audio features (256) - YAMNet-256 embedding
+        names.extend([f"audio_emb_{i}" for i in range(256)])
 
         # Keypoints features (51)
         keypoint_names = [
@@ -336,7 +329,7 @@ class ContextEncoder:
         Convert numerical vector back to human-readable format (for debugging)
 
         Args:
-            vector: 159-dimensional numpy array
+            vector: 409-dimensional numpy array
 
         Returns:
             Dict with decoded features
@@ -368,15 +361,18 @@ class ContextEncoder:
             "count": len(detected_objects)
         }
 
-        # Audio features
-        audio_vector = vector[102:108]
-        audio_idx = np.argmax(audio_vector) if np.max(audio_vector) > 0 else 0
+        # Audio features (YAMNet-256 embedding)
+        audio_embedding = vector[102:358]
+        has_audio = np.any(audio_embedding != 0)
         audio_features = {
-            "event": self.audio_events[audio_idx]
+            "has_audio": has_audio,
+            "embedding_norm": float(np.linalg.norm(audio_embedding)),
+            "embedding_mean": float(np.mean(audio_embedding)),
+            "embedding_shape": "(256,)"
         }
 
         # Keypoints features
-        keypoints_vector = vector[108:159]
+        keypoints_vector = vector[358:409]
         has_pose = np.any(keypoints_vector != 0)
         keypoints_features = {
             "has_pose": has_pose,

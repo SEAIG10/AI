@@ -49,6 +49,14 @@ class RVCRobot:
         else:
             print("GPS sensor not available")
 
+        # Initialize Keyboard for manual control (WASD)
+        self.keyboard = self.robot.getKeyboard()
+        if self.keyboard is not None:
+            self.keyboard.enable(self.timestep)
+            print("Keyboard enabled - Use WASD to control robot")
+        else:
+            print("Keyboard not available")
+
         # Initialize FloorPlanManager (FR1: Semantic Spatial Mapping)
         config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'zones_config.json')
         try:
@@ -59,9 +67,10 @@ class RVCRobot:
             self.floor_plan = None
 
         # Initialize YamnetProcessor (FR2.2: Audio Event Detection)
+        yamnet_model_path = os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'audio', 'yamnet-256.tflite')
         try:
-            self.audio_processor = YamnetProcessor()
-            print("YamnetProcessor initialized")
+            self.audio_processor = YamnetProcessor(model_path=yamnet_model_path)
+            print(f"YamnetProcessor initialized with model: {yamnet_model_path}")
         except Exception as e:
             print(f"Warning: Could not load YamnetProcessor: {e}")
             self.audio_processor = None
@@ -92,10 +101,14 @@ class RVCRobot:
             print("Motors initialized successfully!")
 
         # Initialize YOLO models
-        print("Loading YOLOv8 models...")
+        print("Loading Custom YOLO models...")
         try:
-            self.yolo_model = YOLO('yolov8n.pt')  # Object detection
-            print("✓ YOLOv8n (object detection) loaded")
+            # Use custom fine-tuned YOLO11n (14 classes: HomeObjects + HD10K)
+            yolo_path = os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'yolo', 'best.pt')
+            self.yolo_model = YOLO(yolo_path)  # Object detection
+            print(f"✓ Custom YOLO11n loaded from {yolo_path}")
+            print("  Classes: bed, sofa, chair, table, lamp, tv, laptop, wardrobe,")
+            print("           window, door, potted plant, photo frame, solid_waste, liquid_stain")
         except Exception as e:
             print(f"Warning: Could not load YOLO model: {e}")
             self.yolo_model = None
@@ -127,7 +140,7 @@ class RVCRobot:
             self.context_encoder = None
 
         # FR3: Initialize GRU Model for pollution prediction
-        model_path = os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'gru_model.keras')
+        model_path = os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'gru', 'gru_model.keras')
         try:
             self.gru_model = keras.models.load_model(model_path)
             print(f"GRU Model loaded from: {model_path}")
@@ -136,7 +149,7 @@ class RVCRobot:
             self.gru_model = None
 
         # FR3: Initialize 30-timestep buffer for sequential prediction
-        self.context_buffer = deque(maxlen=30)  # Stores last 30 context vectors (108-dim each)
+        self.context_buffer = deque(maxlen=30)  # Stores last 30 context vectors (409-dim each)
         self.prediction_interval = 10  # Run prediction every N steps (to avoid too frequent predictions)
         self.last_prediction = None  # Store last prediction result
         print(f"Context buffer initialized (size: 30 timesteps)")
@@ -476,33 +489,27 @@ class RVCRobot:
 
     def process_audio(self, audio):
         """
-        FR2.2: Process audio with Yamnet-256 for Sound Event Detection
+        FR2.2: Process audio with Yamnet-256 to extract audio embedding
 
         Args:
             audio: Raw audio buffer from microphone
 
         Returns:
-            list: Detected audio events [{"event": "Speech", "confidence": 0.85}, ...]
+            np.ndarray: 256-dimensional audio embedding from YAMNet-256
         """
         if self.audio_processor is None:
             return None
 
-        if audio is None or len(audio) == 0:
-            return [{"event": "Silence", "confidence": 1.0}]
+        # Extract 256-dim audio embedding
+        audio_embedding = self.audio_processor.get_audio_embedding(audio)
 
-        # Classify audio events
-        events = self.audio_processor.classify_audio(audio)
-
-        # Filter to target events (FR2.2.2)
-        filtered_events = self.audio_processor.filter_target_events(events)
-
-        return filtered_events
+        return audio_embedding
 
     def predict_pollution(self):
         """
         FR3: Predict pollution probability for all zones using GRU model
 
-        Requires: context_buffer to have 30 timesteps (30, 108)
+        Requires: context_buffer to have 30 timesteps (30, 409)
 
         Returns:
             dict: Prediction results with probabilities for each zone
@@ -513,10 +520,10 @@ class RVCRobot:
         if len(self.context_buffer) < 30:
             return None  # Not enough data yet
 
-        # Convert buffer to numpy array (30, 108)
+        # Convert buffer to numpy array (30, 409)
         sequence = np.array(list(self.context_buffer), dtype=np.float32)
 
-        # Add batch dimension: (30, 108) → (1, 30, 108)
+        # Add batch dimension: (30, 409) → (1, 30, 409)
         sequence = np.expand_dims(sequence, axis=0)
 
         # Run GRU prediction
@@ -543,14 +550,27 @@ class RVCRobot:
         step_count = 0
 
         print("\n=== RVC Robot Starting ===")
-        print("Controls will be implemented for autonomous navigation")
-        print("Camera and microphone data will be processed for AI learning\n")
-
-        # Simple test pattern: move forward for a bit
-        self.move_forward(1.0)
+        print("Manual Control: WASD to move, Space to stop")
+        print("  W: Forward  |  S: Backward")
+        print("  A: Turn Left  |  D: Turn Right  |  Space: Stop\n")
 
         while self.robot.step(self.timestep) != -1:
             step_count += 1
+
+            # Handle keyboard input (WASD control)
+            if self.keyboard:
+                key = self.keyboard.getKey()
+                if key != -1:  # Key pressed
+                    if key == ord('W'):
+                        self.move_forward(2.0)
+                    elif key == ord('S'):
+                        self.move_backward(2.0)
+                    elif key == ord('A'):
+                        self.turn_left(2.0)
+                    elif key == ord('D'):
+                        self.turn_right(2.0)
+                    elif key == ord(' '):  # Space
+                        self.stop()
 
             # Get sensor data
             image = self.get_camera_image()
@@ -558,7 +578,7 @@ class RVCRobot:
 
             # FR2: Multimodal sensing
             detections, pose_data = self.process_vision(image)  # FR2.1: Visual (objects + pose)
-            audio_events = self.process_audio(audio)  # FR2.2: Audio
+            audio_embedding = self.process_audio(audio)  # FR2.2: Audio (256-dim embedding)
 
             # Normalize keypoints if available (Option 1: Raw keypoints to GRU)
             keypoints_normalized = None
@@ -600,9 +620,10 @@ class RVCRobot:
                         non_zero = (keypoints_normalized != 0).sum()
                         print(f"  Keypoints: {non_zero}/51 values (normalized)")
 
-                # FR2.2: Audio events
-                if audio_events:
-                    print(f"Audio: {audio_events[0]['event']} ({audio_events[0]['confidence']:.2f})")
+                # FR2.2: Audio embedding
+                if audio_embedding is not None:
+                    emb_norm = np.linalg.norm(audio_embedding)
+                    print(f"Audio: Embedding (norm: {emb_norm:.2f})")
                 else:
                     print("Audio: N/A")
 
@@ -612,13 +633,13 @@ class RVCRobot:
                         position=position,
                         zone_info=zone_info,
                         visual_detections=detections,
-                        audio_events=audio_events,
+                        audio_embedding=audio_embedding,  # 256-dim YAMNet embedding
                         keypoints=keypoints_normalized  # Add normalized pose keypoints (51 dim)
                     )
                     row_id = self.context_db.insert_context(context)
                     print(f"Context: [{row_id}] {context['context_summary']}")
 
-                    # FR3: Encode context to 108-dim vector and add to buffer
+                    # FR3: Encode context to 409-dim vector and add to buffer
                     if self.context_encoder:
                         context_vector = self.context_encoder.encode(context)
                         self.context_buffer.append(context_vector)
@@ -638,19 +659,6 @@ class RVCRobot:
                         if prediction['needs_cleaning']:
                             print(f"\n⚠️  Zones needing attention: {', '.join(prediction['needs_cleaning'])}")
                         print(f"{'='*60}\n")
-
-            # TODO: Add AI decision making logic here
-            # - YOLO for object detection (crumbs, people, furniture)
-            # - SED for sound classification (TV, conversation)
-            # - LSTM for pattern learning and prediction
-
-            # Simple behavior for testing
-            if step_count == 100:
-                print("Turning right...")
-                self.turn_right(1.0)
-            elif step_count == 150:
-                print("Moving forward...")
-                self.move_forward(1.0)
 
         print("\n=== RVC Robot Stopped ===")
         cv2.destroyAllWindows()

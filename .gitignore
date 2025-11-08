@@ -18,12 +18,25 @@ ENV/
 *.swo
 *~
 
-# YOLO Models (large files)
-*.pt
-*.onnx
-*.engine
-runs/
-weights/
+# Datasets (large files - 2.5GB+)
+datasets/
+!datasets/*.yaml          # Keep YAML config files
+!datasets/*.json          # Keep JSON config files
+
+# YOLO/PyTorch models (large files)
+*.pt                      # PyTorch models
+*.onnx                    # ONNX models
+*.engine                  # TensorRT engines
+!yolo11n.pt              # Keep only base pretrained if needed
+
+# Models (trained weights)
+models/yolo/
+models/gru/
+models/audio/*.h5
+
+# YOLO training outputs
+runs/                     # Training results and checkpoints
+weights/                  # Weight files
 
 # Webots
 .*.wbproj
@@ -36,10 +49,12 @@ Thumbs.db
 # Logs and data
 *.log
 logs/
-data/
+data/                     # Runtime data and databases
 *.csv
 
 # Temporary files
 tmp/
 temp/
 *.tmp
+extract_*.py             # Temporary extraction scripts
+inspect_*.py             # Temporary inspection scripts

@@ -118,8 +118,8 @@ def main():
 
     # ===== Step 6: Save Model =====
     print("\n[Step 6] Saving model...")
-    os.makedirs("models", exist_ok=True)
-    model.save("models/gru_model.keras")
+    os.makedirs("models/gru", exist_ok=True)
+    model.save("models/gru/gru_model.keras")
 
     # ===== Step 7: Plot Training History =====
     print("\n[Step 7] Plotting training history...")
@@ -145,7 +145,7 @@ def main():
     print("=" * 70)
     print("\nSaved files:")
     print("  - data/training_dataset.npz (dataset)")
-    print("  - models/gru_model.keras (trained model)")
+    print("  - models/gru/gru_model.keras (trained model)")
     print("  - results/training_history.png (plots)")
 
 

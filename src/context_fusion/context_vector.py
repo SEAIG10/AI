@@ -25,7 +25,7 @@ class ContextVector:
         position: Optional[Tuple[float, float]] = None,
         zone_info: Optional[Dict] = None,
         visual_detections: Optional[List[Dict]] = None,
-        audio_events: Optional[List[Dict]] = None,
+        audio_embedding: Optional[np.ndarray] = None,
         keypoints: Optional[np.ndarray] = None
     ) -> Dict:
         """
@@ -36,7 +36,7 @@ class ContextVector:
             position: (x, y) GPS coordinates
             zone_info: Semantic zone information from FloorPlanManager
             visual_detections: YOLO object detections
-            audio_events: Yamnet audio event classifications
+            audio_embedding: YAMNet-256 audio embedding (256-dim numpy array)
             keypoints: Normalized pose keypoints (51-dim numpy array)
 
         Returns:
@@ -50,11 +50,9 @@ class ContextVector:
                     {"class": "person", "confidence": 0.92, "bbox": [...]},
                     {"class": "couch", "confidence": 0.85, "bbox": [...]}
                 ],
-                "audio_events": [
-                    {"event": "Television", "confidence": 0.78}
-                ],
+                "audio_embedding": [0.12, -0.34, ..., 0.56],  # 256-dim
                 "keypoints": [x0, y0, c0, ..., x16, y16, c16],  # 51-dim
-                "context_summary": "living_room | 2 objects | Television | pose:yes"
+                "context_summary": "living_room | 2 objects | audio:yes | pose:yes"
             }
         """
         if timestamp is None:
@@ -85,14 +83,13 @@ class ContextVector:
                     "bbox": det["bbox"]  # (x1, y1, x2, y2)
                 })
 
-        # Build audio events
-        audio_events_data = []
-        if audio_events:
-            for event in audio_events:
-                audio_events_data.append({
-                    "event": event["event"],
-                    "confidence": round(event["confidence"], 2)
-                })
+        # Process audio embedding
+        audio_embedding_data = None
+        has_audio = False
+        if audio_embedding is not None:
+            # Convert numpy array to list for JSON serialization
+            audio_embedding_data = audio_embedding.tolist() if isinstance(audio_embedding, np.ndarray) else list(audio_embedding)
+            has_audio = True
 
         # Process keypoints
         keypoints_data = None
@@ -104,7 +101,7 @@ class ContextVector:
 
         # Create context summary (human-readable)
         visual_count = len(visual_events)
-        audio_label = audio_events_data[0]["event"] if audio_events_data else "None"
+        audio_label = "audio:yes" if has_audio else "audio:no"
         pose_label = "pose:yes" if has_pose else "pose:no"
         context_summary = f"{zone_id} | {visual_count} objects | {audio_label} | {pose_label}"
 
@@ -115,7 +112,7 @@ class ContextVector:
             "zone": zone_label,
             "zone_id": zone_id,
             "visual_events": visual_events,
-            "audio_events": audio_events_data,
+            "audio_embedding": audio_embedding_data,  # 256-dim YAMNet embedding (or None)
             "keypoints": keypoints_data,  # 51-dim normalized pose (or None)
             "context_summary": context_summary
         }
@@ -164,23 +161,18 @@ class ContextVector:
             counts[class_name] = counts.get(class_name, 0) + 1
         return counts
 
-    def get_dominant_audio_event(self, context: Dict) -> Optional[str]:
+    def has_audio_embedding(self, context: Dict) -> bool:
         """
-        Get the audio event with highest confidence
+        Check if context has audio embedding
 
         Args:
             context: Context vector
 
         Returns:
-            Audio event name or None
+            True if audio embedding exists, False otherwise
         """
-        audio_events = context.get("audio_events", [])
-        if not audio_events:
-            return None
-
-        # Find event with max confidence
-        dominant = max(audio_events, key=lambda e: e["confidence"])
-        return dominant["event"]
+        audio_embedding = context.get("audio_embedding", None)
+        return audio_embedding is not None and len(audio_embedding) > 0
 
     def compare_contexts(self, context1: Dict, context2: Dict) -> Dict:
         """
@@ -196,7 +188,8 @@ class ContextVector:
                 "zone_changed": True/False,
                 "new_objects": ["person", "cup"],
                 "removed_objects": ["dog"],
-                "audio_changed": True/False
+                "audio_changed": True/False,
+                "audio_distance": 0.5  # L2 distance between embeddings
             }
         """
         # Zone change
@@ -210,16 +203,29 @@ class ContextVector:
         new_objects = list(classes2 - classes1)
         removed_objects = list(classes1 - classes2)
 
-        # Audio change
-        audio1 = self.get_dominant_audio_event(context1)
-        audio2 = self.get_dominant_audio_event(context2)
-        audio_changed = (audio1 != audio2)
+        # Audio change (compare embeddings)
+        audio1 = context1.get("audio_embedding")
+        audio2 = context2.get("audio_embedding")
+
+        audio_changed = False
+        audio_distance = 0.0
+
+        if audio1 is not None and audio2 is not None:
+            # Calculate L2 distance between embeddings
+            emb1 = np.array(audio1) if isinstance(audio1, list) else audio1
+            emb2 = np.array(audio2) if isinstance(audio2, list) else audio2
+            audio_distance = float(np.linalg.norm(emb1 - emb2))
+            # Consider changed if distance > threshold
+            audio_changed = audio_distance > 0.5
+        elif audio1 != audio2:  # One is None, the other isn't
+            audio_changed = True
 
         return {
             "zone_changed": zone_changed,
             "new_objects": new_objects,
             "removed_objects": removed_objects,
             "audio_changed": audio_changed,
+            "audio_distance": audio_distance,
             "time_delta": context2["timestamp"] - context1["timestamp"]
         }
 
@@ -239,26 +245,28 @@ def test_context_vector():
         {"class": "person", "confidence": 0.92, "bbox": (100, 150, 200, 400)},
         {"class": "couch", "confidence": 0.85, "bbox": (50, 200, 300, 450)},
     ]
-    audio_events = [
-        {"event": "Television", "confidence": 0.78}
-    ]
+    # Simulate 256-dim audio embedding
+    audio_embedding = np.random.randn(256).astype(np.float32)
 
     # Create context vector
     context = cv.create_context(
         position=position,
         zone_info=zone_info,
         visual_detections=visual_detections,
-        audio_events=audio_events
+        audio_embedding=audio_embedding
     )
 
-    print("\nContext Vector:")
-    print(cv.context_to_json(context))
+    print("\nContext Vector (truncated for readability):")
+    context_display = context.copy()
+    if context_display.get("audio_embedding"):
+        context_display["audio_embedding"] = f"[256-dim array, first 5: {context_display['audio_embedding'][:5]}...]"
+    print(json.dumps(context_display, ensure_ascii=False, indent=2))
 
     print("\nVisual class counts:")
     print(cv.get_visual_class_counts(context))
 
-    print("\nDominant audio event:")
-    print(cv.get_dominant_audio_event(context))
+    print("\nHas audio embedding:")
+    print(cv.has_audio_embedding(context))
 
     print("\n" + "=" * 60)
     print("FR2.3 Test Complete!")
