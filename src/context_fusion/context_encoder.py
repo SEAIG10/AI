@@ -10,15 +10,15 @@ from typing import Dict, List, Optional
 
 class ContextEncoder:
     """
-    FR2.3.3: Encodes JSON Context Vectors into fixed 409-dimensional numerical vectors
+    FR2.3.3: Encodes JSON Context Vectors into fixed 338-dimensional numerical vectors
 
     Vector composition:
     - Time features: 10 dimensions
     - Spatial features: 7 dimensions (zone one-hot)
-    - Visual features: 85 dimensions (COCO 80 + custom 5, multi-hot)
+    - Visual features: 14 dimensions (Custom YOLO 14 classes, multi-hot)
     - Audio features: 256 dimensions (YAMNet-256 embedding)
     - Keypoints features: 51 dimensions (raw normalized pose)
-    Total: 409 dimensions
+    Total: 338 dimensions
     """
 
     def __init__(self):
@@ -36,28 +36,23 @@ class ContextEncoder:
         ]
         self.zone_to_idx = {zone: idx for idx, zone in enumerate(self.zone_labels)}
 
-        # FR2.1.2: COCO 80 classes + FR2.1.4: Custom 5 classes
-        # COCO 80 classes (simplified - you may need to expand this)
+        # Custom YOLO 14 classes (HomeObjects-3K + HD10K)
+        # See: /datasets/vacuum_cleaner.yaml
         self.visual_classes = [
-            # COCO 80 classes (representative subset, expand as needed)
-            "person", "bicycle", "car", "motorcycle", "airplane",
-            "bus", "train", "truck", "boat", "traffic light",
-            "fire hydrant", "stop sign", "parking meter", "bench", "bird",
-            "cat", "dog", "horse", "sheep", "cow",
-            "elephant", "bear", "zebra", "giraffe", "backpack",
-            "umbrella", "handbag", "tie", "suitcase", "frisbee",
-            "skis", "snowboard", "sports ball", "kite", "baseball bat",
-            "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
-            "wine glass", "cup", "fork", "knife", "spoon",
-            "bowl", "banana", "apple", "sandwich", "orange",
-            "broccoli", "carrot", "hot dog", "pizza", "donut",
-            "cake", "chair", "couch", "potted plant", "bed",
-            "dining table", "toilet", "tv", "laptop", "mouse",
-            "remote", "keyboard", "cell phone", "microwave", "oven",
-            "toaster", "sink", "refrigerator", "book", "clock",
-            "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
-            # FR2.1.4: Custom 5 classes for dirt detection
-            "crumbs", "liquid_spill", "pet_food", "trash", "dust"
+            "bed",           # 0 - furniture
+            "sofa",          # 1 - furniture
+            "chair",         # 2 - furniture
+            "table",         # 3 - furniture
+            "lamp",          # 4 - object
+            "tv",            # 5 - electronics
+            "laptop",        # 6 - electronics
+            "wardrobe",      # 7 - furniture
+            "window",        # 8 - structure
+            "door",          # 9 - structure
+            "potted plant",  # 10 - decoration
+            "photo frame",   # 11 - decoration
+            "solid_waste",   # 12 - dirt (HD10K: crumbs, dust, trash)
+            "liquid_stain"   # 13 - dirt (HD10K: spills, water stains)
         ]
         self.visual_to_idx = {cls: idx for idx, cls in enumerate(self.visual_classes)}
 
@@ -69,13 +64,13 @@ class ContextEncoder:
 
     def encode(self, context: Dict) -> np.ndarray:
         """
-        Encode JSON context vector to 409-dimensional numerical vector
+        Encode JSON context vector to 338-dimensional numerical vector
 
         Args:
             context: JSON context dict from ContextVector.create_context()
 
         Returns:
-            409-dimensional numpy array [time(10) + spatial(7) + visual(85) + audio(256) + keypoints(51)]
+            338-dimensional numpy array [time(10) + spatial(7) + visual(14) + audio(256) + keypoints(51)]
         """
         # Extract timestamp
         timestamp = context.get("timestamp", 0)
@@ -83,7 +78,7 @@ class ContextEncoder:
         # Encode each component
         time_features = self._encode_time(timestamp)        # 10 dim
         spatial_features = self._encode_spatial(context)    # 7 dim
-        visual_features = self._encode_visual(context)      # 85 dim
+        visual_features = self._encode_visual(context)      # 14 dim (Custom YOLO)
         audio_features = self._encode_audio(context)        # 256 dim (YAMNet-256 embedding)
         keypoints_features = self._encode_keypoints(context)  # 51 dim
 
@@ -96,7 +91,7 @@ class ContextEncoder:
             keypoints_features
         ])
 
-        assert vector.shape == (409,), f"Expected shape (409,), got {vector.shape}"
+        assert vector.shape == (338,), f"Expected shape (338,), got {vector.shape}"
         return vector.astype(np.float32)
 
     def _encode_time(self, timestamp: float) -> np.ndarray:
@@ -202,16 +197,16 @@ class ContextEncoder:
 
     def _encode_visual(self, context: Dict) -> np.ndarray:
         """
-        FR2.3.3(c): Encode visual features (85 dimensions)
-        Multi-hot encoding of detected object classes
+        FR2.3.3(c): Encode visual features (14 dimensions)
+        Multi-hot encoding of detected object classes from Custom YOLO
 
         Returns:
-            85-dimensional multi-hot vector (multiple 1s possible)
+            14-dimensional multi-hot vector (multiple 1s possible)
         """
         visual_events = context.get("visual_events", [])
 
         # Multi-hot encoding
-        vector = np.zeros(85, dtype=np.float32)
+        vector = np.zeros(14, dtype=np.float32)
 
         for event in visual_events:
             class_name = event.get("class", "")
@@ -282,7 +277,7 @@ class ContextEncoder:
             contexts: List of JSON context dicts
 
         Returns:
-            (N, 409) numpy array
+            (N, 338) numpy array
         """
         return np.array([self.encode(ctx) for ctx in contexts], dtype=np.float32)
 
@@ -291,7 +286,7 @@ class ContextEncoder:
         Get human-readable feature names for debugging
 
         Returns:
-            List of 409 feature names
+            List of 338 feature names
         """
         names = []
 
@@ -306,7 +301,7 @@ class ContextEncoder:
         # Spatial features (7)
         names.extend([f"zone_{zone}" for zone in self.zone_labels])
 
-        # Visual features (85)
+        # Visual features (14) - Custom YOLO
         names.extend([f"obj_{cls}" for cls in self.visual_classes])
 
         # Audio features (256) - YAMNet-256 embedding
@@ -329,14 +324,14 @@ class ContextEncoder:
         Convert numerical vector back to human-readable format (for debugging)
 
         Args:
-            vector: 409-dimensional numpy array
+            vector: 338-dimensional numpy array
 
         Returns:
             Dict with decoded features
         """
         feature_names = self.get_feature_names()
 
-        # Time features
+        # Time features (0-9)
         time_features = {
             "hour_sin": vector[0],
             "hour_cos": vector[1],
@@ -346,23 +341,23 @@ class ContextEncoder:
             "is_work_time": bool(vector[6] > 0.5)
         }
 
-        # Spatial features
+        # Spatial features (10-16)
         zone_vector = vector[10:17]
         zone_idx = np.argmax(zone_vector) if np.max(zone_vector) > 0 else None
         spatial_features = {
             "zone": self.zone_labels[zone_idx] if zone_idx is not None else "unknown"
         }
 
-        # Visual features
-        visual_vector = vector[17:102]
+        # Visual features (17-30)
+        visual_vector = vector[17:31]
         detected_objects = [self.visual_classes[i] for i, v in enumerate(visual_vector) if v > 0.5]
         visual_features = {
             "objects": detected_objects,
             "count": len(detected_objects)
         }
 
-        # Audio features (YAMNet-256 embedding)
-        audio_embedding = vector[102:358]
+        # Audio features (31-286)
+        audio_embedding = vector[31:287]
         has_audio = np.any(audio_embedding != 0)
         audio_features = {
             "has_audio": has_audio,
@@ -371,8 +366,8 @@ class ContextEncoder:
             "embedding_shape": "(256,)"
         }
 
-        # Keypoints features
-        keypoints_vector = vector[358:409]
+        # Keypoints features (287-337)
+        keypoints_vector = vector[287:338]
         has_pose = np.any(keypoints_vector != 0)
         keypoints_features = {
             "has_pose": has_pose,
@@ -428,15 +423,17 @@ def test_context_encoder():
     print("\n[3] Feature Breakdown:")
     print(f"  Time features (0-9): {vector[0:10]}")
     print(f"  Spatial features (10-16): {vector[10:17]}")
-    print(f"  Visual features (17-101): {vector[17:102].sum()} objects detected")
-    print(f"  Audio features (102-107): {vector[102:108]}")
+    print(f"  Visual features (17-30): {vector[17:31].sum()} objects detected")
+    print(f"  Audio features (31-286): {vector[31:287].sum():.2f} embedding norm")
+    print(f"  Keypoints features (287-337): {vector[287:338].sum():.2f} pose sum")
 
     print("\n[4] Decode Debug:")
     decoded = encoder.decode_debug(vector)
     print(f"  Estimated hour: {decoded['time']['estimated_hour']}")
     print(f"  Zone: {decoded['spatial']['zone']}")
     print(f"  Objects: {decoded['visual']['objects']}")
-    print(f"  Audio: {decoded['audio']['event']}")
+    print(f"  Has audio: {decoded['audio']['has_audio']}")
+    print(f"  Has pose: {decoded['keypoints']['has_pose']}")
 
     print("\n[5] Batch Encoding Test:")
     contexts = [test_context] * 5

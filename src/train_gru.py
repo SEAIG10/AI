@@ -74,12 +74,13 @@ def main():
     print("=" * 70 + "\n")
 
     # ===== Step 1: Build Dataset =====
-    print("[Step 1] Building dataset...")
-    builder = DatasetBuilder()
+    print("[Step 1] Building dataset with AttentionContextEncoder (160-dim)...")
+    builder = DatasetBuilder(use_attention=True)  # Use 160-dim attention context
 
     # Generate dataset (주방/거실 위주 - 7개 시나리오)
+    # 7 scenarios × 143 samples = ~1000 total samples
     X_train, y_train, X_val, y_val = builder.build_dataset(
-        num_samples_per_scenario=100,  # 각 시나리오당 100개
+        num_samples_per_scenario=143,  # 각 시나리오당 143개 (7×143 = 1001)
         noise_level=0.1,
         train_split=0.8
     )
@@ -89,8 +90,8 @@ def main():
     builder.save_dataset(X_train, y_train, X_val, y_val, "data/training_dataset.npz")
 
     # ===== Step 2: Create Model =====
-    print("\n[Step 2] Creating GRU model...")
-    model = FedPerGRUModel(num_zones=7)
+    print("\n[Step 2] Creating GRU model with 160-dim context input...")
+    model = FedPerGRUModel(num_zones=7, context_dim=160)  # 160-dim attention context
     model.summary()
 
     # ===== Step 3: Compile Model =====

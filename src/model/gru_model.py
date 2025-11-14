@@ -12,24 +12,26 @@ from typing import Tuple, Optional
 
 class FedPerGRUModel:
     """
-    FR3.2: FedPer Architecture GRU Model
+    FR3.2: FedPer Architecture GRU Model with Attention Context Encoder
 
     Architecture:
     - Base Layer (shared): GRU(64) → GRU(32)
     - Head Layer (personalized): Dense(16) → Dense(7, sigmoid)
 
-    Input: (batch, 30, 409) - 30 timesteps of 409-dim context vectors
+    Input: (batch, 30, 160) - 30 timesteps of 160-dim attention context vectors
     Output: (batch, 7) - Pollution probability for 7 zones
     """
 
-    def __init__(self, num_zones: int = 7):
+    def __init__(self, num_zones: int = 7, context_dim: int = 160):
         """
         Initialize GRU model
 
         Args:
             num_zones: Number of semantic zones (default: 7)
+            context_dim: Context vector dimension (default: 160 from AttentionContextEncoder)
         """
         self.num_zones = num_zones
+        self.context_dim = context_dim
         self.model = self._build_model()
         self.base_model = None  # For FedPer: shared base layers
         self.head_model = None  # For FedPer: personalized head layers
@@ -41,8 +43,8 @@ class FedPerGRUModel:
         Returns:
             Compiled Keras model
         """
-        # Input
-        inputs = layers.Input(shape=(30, 409), name='context_sequence')
+        # Input: 30 timesteps of attention context vectors
+        inputs = layers.Input(shape=(30, self.context_dim), name='context_sequence')
 
         # ===== FR3.2a: Base Layer (Shared Feature Extraction) =====
         # GRU Layer 1: 64 units, return sequences for next GRU
@@ -105,9 +107,9 @@ class FedPerGRUModel:
         Train GRU model
 
         Args:
-            X_train: Training sequences (N, 30, 409)
+            X_train: Training sequences (N, 30, 160) - attention context vectors
             y_train: Training labels (N, 7)
-            X_val: Validation sequences (N, 30, 409)
+            X_val: Validation sequences (N, 30, 160) - attention context vectors
             y_val: Validation labels (N, 7)
             epochs: Number of training epochs
             batch_size: Batch size
@@ -162,7 +164,7 @@ class FedPerGRUModel:
         Predict pollution probabilities
 
         Args:
-            X: Input sequences (N, 30, 409)
+            X: Input sequences (N, 30, 160) - attention context vectors
             threshold: Threshold for binary classification
 
         Returns:
@@ -180,7 +182,7 @@ class FedPerGRUModel:
         Evaluate model performance
 
         Args:
-            X_test: Test sequences (N, 30, 409)
+            X_test: Test sequences (N, 30, 160) - attention context vectors
             y_test: Test labels (N, 7)
             zone_names: List of zone names for reporting
 
@@ -269,17 +271,18 @@ class FedPerGRUModel:
 def test_gru_model():
     """Test GRU model with dummy data"""
     print("\n" + "=" * 70)
-    print("Testing GRU Model")
+    print("Testing GRU Model with Attention Context (160-dim)")
     print("=" * 70 + "\n")
 
-    # Create dummy data
-    X_train = np.random.randn(100, 30, 409).astype(np.float32)
+    # Create dummy data (attention context vectors)
+    context_dim = 160
+    X_train = np.random.randn(100, 30, context_dim).astype(np.float32)
     y_train = np.random.randint(0, 2, (100, 7)).astype(np.float32)
-    X_val = np.random.randn(20, 30, 409).astype(np.float32)
+    X_val = np.random.randn(20, 30, context_dim).astype(np.float32)
     y_val = np.random.randint(0, 2, (20, 7)).astype(np.float32)
 
     print("[1] Creating model...")
-    model = FedPerGRUModel(num_zones=7)
+    model = FedPerGRUModel(num_zones=7, context_dim=context_dim)
     model.summary()
 
     print("\n[2] Compiling model...")
@@ -295,7 +298,7 @@ def test_gru_model():
     )
 
     print("\n[4] Testing prediction...")
-    X_test = np.random.randn(10, 30, 409).astype(np.float32)
+    X_test = np.random.randn(10, 30, context_dim).astype(np.float32)
     y_pred = model.predict(X_test)
     print(f"  Input shape: {X_test.shape}")
     print(f"  Output shape: {y_pred.shape}")
