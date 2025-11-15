@@ -3,7 +3,7 @@ Attention-based Context Encoder for Multi-modal Robot Vacuum Cleaner
 
 This module implements a cross-modal attention mechanism for fusing features from multiple sensors:
 - Visual: YOLO object detection (14 classes, expandable)
-- Audio: YAMNet embeddings (256-dim)
+- Audio: YAMNet 17-class classification (17-dim)
 - Pose: Human pose keypoints (51-dim)
 - Spatial: GPS location (7 zones)
 - Time: Temporal features (10-dim)
@@ -33,7 +33,7 @@ class AttentionContextEncoder(Model):
 
     Input Dimensions (variable):
     - visual: (batch, 14) - YOLO class probabilities [can expand to 15, 20, etc.]
-    - audio: (batch, 256) - YAMNet audio embeddings
+    - audio: (batch, 17) - YAMNet 17-class probabilities
     - pose: (batch, 51) - Human pose keypoints (17 joints × 3 coords)
     - spatial: (batch, 7) - GPS zone one-hot encoding
     - time: (batch, 10) - Temporal features (hour, day_of_week, etc.)
@@ -45,7 +45,7 @@ class AttentionContextEncoder(Model):
     def __init__(
         self,
         visual_dim=14,
-        audio_dim=256,
+        audio_dim=17,
         pose_dim=51,
         spatial_dim=7,
         time_dim=10,
@@ -59,7 +59,7 @@ class AttentionContextEncoder(Model):
 
         Args:
             visual_dim: Input dimension for visual features (default: 14 YOLO classes)
-            audio_dim: Input dimension for audio features (default: 256)
+            audio_dim: Input dimension for audio features (default: 17 YAMNet classes)
             pose_dim: Input dimension for pose features (default: 51)
             spatial_dim: Input dimension for spatial features (default: 7)
             time_dim: Input dimension for time features (default: 10)
@@ -159,7 +159,7 @@ class AttentionContextEncoder(Model):
         Args:
             inputs: Dictionary containing:
                 - 'visual': (batch, 14) - YOLO class probabilities
-                - 'audio': (batch, 256) - YAMNet embeddings
+                - 'audio': (batch, 17) - YAMNet 17-class probabilities
                 - 'pose': (batch, 51) - Pose keypoints
                 - 'spatial': (batch, 7) - GPS zone encoding
                 - 'time': (batch, 10) - Time features
@@ -227,7 +227,7 @@ class AttentionContextEncoder(Model):
 
 def create_attention_encoder(
     visual_dim=14,
-    audio_dim=256,
+    audio_dim=17,
     pose_dim=51,
     spatial_dim=7,
     time_dim=10,
@@ -238,7 +238,7 @@ def create_attention_encoder(
 
     Args:
         visual_dim: Number of YOLO classes (default: 14, expandable)
-        audio_dim: YAMNet embedding dimension (default: 256)
+        audio_dim: YAMNet classification dimension (default: 17 classes)
         pose_dim: Pose keypoint dimension (default: 51)
         spatial_dim: Number of GPS zones (default: 7)
         time_dim: Temporal feature dimension (default: 10)
@@ -287,7 +287,7 @@ if __name__ == '__main__':
     batch_size = 4
     test_inputs = {
         'visual': tf.random.normal((batch_size, 14)),   # YOLO 14 classes
-        'audio': tf.random.normal((batch_size, 256)),   # YAMNet embedding
+        'audio': tf.random.normal((batch_size, 17)),    # YAMNet 17 classes
         'pose': tf.random.normal((batch_size, 51)),     # 17 joints × 3
         'spatial': tf.random.normal((batch_size, 7)),   # 7 GPS zones
         'time': tf.random.normal((batch_size, 10)),     # Time features

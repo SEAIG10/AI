@@ -85,9 +85,9 @@ class DatasetBuilder:
             spatial_vec = self.legacy_encoder._encode_spatial(timestep)   # (7,)
             time_vec = self.legacy_encoder._encode_time(timestep.get("timestamp", 0))  # (10,)
 
-            # Mock audio embedding and pose keypoints (for mock data)
-            # In production, these would come from YAMNet and YOLO-Pose
-            audio_vec = np.random.normal(0, 0.1, 256).astype(np.float32)  # (256,)
+            # Mock audio classification and pose keypoints (for mock data)
+            # In production, these would come from YAMNet (17-class) and YOLO-Pose
+            audio_vec = np.random.uniform(0, 0.3, 17).astype(np.float32)  # (17,) - 17-class probabilities
             pose_vec = np.zeros(51, dtype=np.float32)  # (51,) - no person detected in mock
 
             batch_features['visual'].append(visual_vec)
@@ -99,7 +99,7 @@ class DatasetBuilder:
         # Convert to tensors (batch_size=30)
         batch_tensors = {
             'visual': tf.constant(np.array(batch_features['visual']), dtype=tf.float32),    # (30, 14)
-            'audio': tf.constant(np.array(batch_features['audio']), dtype=tf.float32),      # (30, 256)
+            'audio': tf.constant(np.array(batch_features['audio']), dtype=tf.float32),      # (30, 17)
             'pose': tf.constant(np.array(batch_features['pose']), dtype=tf.float32),        # (30, 51)
             'spatial': tf.constant(np.array(batch_features['spatial']), dtype=tf.float32),  # (30, 7)
             'time': tf.constant(np.array(batch_features['time']), dtype=tf.float32),        # (30, 10)

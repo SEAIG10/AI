@@ -1,281 +1,223 @@
 """
-FR2.2: Audio Event Detection using Yamnet-256
-Lightweight audio classification for on-device processing
+FR2.2: Audio Event Detection using YAMNet + 17-class Head
+Based on friend's YAMNet implementation for home sound classification
 """
 
 import numpy as np
-try:
-    import librosa
-    LIBROSA_AVAILABLE = True
-except ImportError:
-    LIBROSA_AVAILABLE = False
-    print("Warning: librosa not installed. Audio processing will be limited.")
+import os
+from pathlib import Path
+from tensorflow.lite.python.interpreter import Interpreter
+
+
+# 17개 오디오 클래스 (친구의 YAMNet Head 기준)
+AUDIO_CLASSES = [
+    "door", "dishes", "cutlery", "chopping", "frying", "microwave", "blender",
+    "water_tap", "sink", "toilet_flush", "telephone", "chewing", "speech",
+    "television", "footsteps", "vacuum", "hair_dryer"
+]
 
 
 class YamnetProcessor:
     """
     FR2.2: Sound Event Detection (SED)
-    Uses Yamnet-256 for lightweight audio event classification
+    Uses YAMNet backbone + 17-class custom head for home sound classification
+
+    Architecture:
+        Audio (16kHz) → YAMNet backbone → 1024-dim embedding → Head → 17-class probabilities
     """
 
-    def __init__(self, model_path=None):
+    def __init__(self, yamnet_path=None, head_path=None):
         """
-        Initialize Yamnet-256 processor
+        Initialize YAMNet + Head processor
 
         Args:
-            model_path: Path to Yamnet-256 TFLite model (optional)
+            yamnet_path: Path to yamnet.tflite (백본)
+            head_path: Path to head_1024_fp16.tflite (17-class 분류기)
         """
-        self.model_path = model_path
-        self.model = None
         self.sample_rate = 16000  # YAMNet standard
-        self.embedding_dim = 256  # YAMNet-256 embedding dimension
+        self.num_classes = 17
 
-        # Load model if path provided
-        if model_path:
-            self._load_model(model_path)
-        else:
-            print("Warning: No model path provided. Using simulated audio embeddings.")
-
-    def _load_model(self, model_path):
-        """Load Yamnet-256 TFLite model"""
-        try:
-            import tensorflow as tf
-            self.interpreter = tf.lite.Interpreter(model_path=model_path)
-            self.interpreter.allocate_tensors()
-
-            # Get input/output details
-            self.input_details = self.interpreter.get_input_details()
-            self.output_details = self.interpreter.get_output_details()
-
-            # Find 256-dim embedding tensor (not the classification output)
-            # The embedding is at an intermediate layer before final classification
-            tensor_details = self.interpreter.get_tensor_details()
-            self.embedding_tensor_index = None
-
-            for tensor in tensor_details:
-                shape = tensor['shape']
-                # Look for (1, 256) shaped tensor - this is the embedding
-                if len(shape) == 2 and shape[0] == 1 and shape[1] == 256:
-                    self.embedding_tensor_index = tensor['index']
-                    self.embedding_tensor_details = tensor
-                    break
-
-            # Re-create interpreter with custom output for embedding extraction
-            if self.embedding_tensor_index is not None:
-                # Create signature runner for flexible output access
-                # Note: TFLite doesn't easily allow intermediate tensor access,
-                # so we'll use a workaround with tensors allocated after invoke()
-                pass
-
-            print(f"✓ Yamnet-256 model loaded from {model_path}")
-            print(f"  Input shape: {self.input_details[0]['shape']}")
-            print(f"  Output shape: {self.output_details[0]['shape']}")
-            if self.embedding_tensor_index is not None:
-                print(f"  Embedding tensor index: {self.embedding_tensor_index}")
-                print(f"  Embedding shape: {self.embedding_tensor_details['shape']}")
-            else:
-                print(f"  Warning: Could not find 256-dim embedding tensor!")
-
-            self.model = True
-        except Exception as e:
-            print(f"Warning: Could not load Yamnet-256 model: {e}")
-            self.model = None
-
-    def preprocess_audio(self, audio_buffer, sample_rate=None):
-        """
-        Convert audio buffer to mel-spectrogram for YAMNet-256
-
-        YAMNet-256 spec (STMicroelectronics):
-        - 64 mels, 96 frames
-        - FFT window: 25ms
-        - Hop length: 10ms
-        - Frequency range: 125-7500 Hz
-
-        Args:
-            audio_buffer: Raw audio samples (numpy array)
-            sample_rate: Sample rate of audio (default: 16000)
-
-        Returns:
-            mel_spectrogram: (1, 64, 96, 1) mel-spectrogram patch (with batch dim)
-        """
-        if not LIBROSA_AVAILABLE:
-            return None
-
-        if sample_rate is None:
-            sample_rate = self.sample_rate
-
-        # Resample if necessary
-        if sample_rate != self.sample_rate:
-            audio_buffer = librosa.resample(
-                audio_buffer,
-                orig_sr=sample_rate,
-                target_sr=self.sample_rate
+        # 기본 경로 설정
+        if yamnet_path is None:
+            yamnet_path = os.path.join(
+                Path(__file__).resolve().parents[2],
+                'models', 'audio', 'yamnet.tflite'
+            )
+        if head_path is None:
+            head_path = os.path.join(
+                Path(__file__).resolve().parents[2],
+                'models', 'audio', 'head_1024_fp16.tflite'
             )
 
-        # YAMNet-256 parameters
-        n_fft = int(0.025 * self.sample_rate)  # 25ms window = 400 samples @ 16kHz
-        hop_length = int(0.010 * self.sample_rate)  # 10ms hop = 160 samples @ 16kHz
+        self.yamnet_path = yamnet_path
+        self.head_path = head_path
 
-        # Compute mel-spectrogram
-        mel_spec = librosa.feature.melspectrogram(
-            y=audio_buffer,
-            sr=self.sample_rate,
-            n_mels=64,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            fmin=125,  # Min frequency
-            fmax=7500  # Max frequency
-        )
+        # 모델 로드
+        self._load_models()
 
-        # Convert to log scale (dB)
-        log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
+    def _load_models(self):
+        """Load YAMNet backbone and 17-class head"""
+        try:
+            # YAMNet 백본 로드
+            if not os.path.exists(self.yamnet_path):
+                raise FileNotFoundError(f"YAMNet model not found: {self.yamnet_path}")
 
-        # Extract 96-frame patch (center crop if longer, pad if shorter)
-        if log_mel_spec.shape[1] >= 96:
-            start_frame = (log_mel_spec.shape[1] - 96) // 2
-            mel_patch = log_mel_spec[:, start_frame:start_frame + 96]
-        else:
-            # Pad with zeros if too short
-            pad_width = ((0, 0), (0, 96 - log_mel_spec.shape[1]))
-            mel_patch = np.pad(log_mel_spec, pad_width, mode='constant')
+            self.yamnet = Interpreter(model_path=self.yamnet_path, num_threads=2)
+            self.yamnet.allocate_tensors()
 
-        # Normalize to [0, 1] range (typical for neural networks)
-        mel_patch = (mel_patch - mel_patch.min()) / (mel_patch.max() - mel_patch.min() + 1e-6)
+            self.yam_in_details = self.yamnet.get_input_details()[0]
+            self.yam_in_idx = self.yam_in_details["index"]
+            self.yam_out_details = self.yamnet.get_output_details()
+            self.yam_emb_idx = 1  # output[1] = 1024-dim embedding
 
-        # Add channel dimension: (64, 96) → (64, 96, 1)
-        mel_patch = mel_patch[..., np.newaxis]
+            print(f"✓ YAMNet backbone loaded from {self.yamnet_path}")
 
-        return mel_patch.astype(np.float32)
+            # Head 분류기 로드
+            if not os.path.exists(self.head_path):
+                raise FileNotFoundError(f"Head model not found: {self.head_path}")
+
+            self.head = Interpreter(model_path=self.head_path, num_threads=2)
+            self.head.allocate_tensors()
+
+            self.head_in_details = self.head.get_input_details()[0]
+            self.head_in_idx = self.head_in_details["index"]
+            self.head_out_idx = self.head.get_output_details()[0]["index"]
+
+            print(f"✓ 17-class Head loaded from {self.head_path}")
+            print(f"  Classes: {', '.join(AUDIO_CLASSES[:5])}... (17 total)")
+
+            self.model_loaded = True
+
+        except Exception as e:
+            print(f"Warning: Could not load YAMNet models: {e}")
+            print("  Will use simulated audio features instead.")
+            self.model_loaded = False
 
     def get_audio_embedding(self, audio_buffer, sample_rate=None):
         """
-        FR2.2: Extract 256-dimensional audio embedding from YAMNet-256
+        FR2.2: Extract 17-dimensional audio classification probabilities
+
+        NOTE: This replaces the old 256-dim embedding approach!
+        Now returns 17-class probabilities instead of embeddings.
 
         Args:
-            audio_buffer: Raw audio samples (numpy array)
+            audio_buffer: Raw audio samples (numpy array, mono)
             sample_rate: Sample rate (default: 16000)
 
         Returns:
-            np.ndarray: 256-dimensional audio embedding (float32)
+            np.ndarray: 17-dimensional audio class probabilities (float32)
                         Returns zeros if audio is None or model fails
         """
         if audio_buffer is None or len(audio_buffer) == 0:
-            # Return zero embedding for silence
-            return np.zeros(self.embedding_dim, dtype=np.float32)
+            # Return zero probabilities for silence
+            return np.zeros(self.num_classes, dtype=np.float32)
 
-        # Preprocess audio
-        mel_spec = self.preprocess_audio(audio_buffer, sample_rate)
+        # 샘플레이트 체크
+        if sample_rate is not None and sample_rate != self.sample_rate:
+            print(f"Warning: Expected {self.sample_rate}Hz, got {sample_rate}Hz")
+            # 리샘플링 필요하면 librosa 사용
+            try:
+                import librosa
+                audio_buffer = librosa.resample(
+                    audio_buffer,
+                    orig_sr=sample_rate,
+                    target_sr=self.sample_rate
+                )
+            except ImportError:
+                print("Warning: librosa not available for resampling")
 
-        if mel_spec is None:
-            # Fallback: Simulate audio embedding
-            return self._simulate_audio_embedding(audio_buffer)
-
-        if self.model is None:
-            # No model loaded, use simulation
-            return self._simulate_audio_embedding(audio_buffer)
+        if not self.model_loaded:
+            # 모델 없으면 시뮬레이션
+            return self._simulate_audio_classification(audio_buffer)
 
         try:
-            # Add batch dimension if not present: (64, 96, 1) → (1, 64, 96, 1)
-            if mel_spec.ndim == 3:
-                mel_spec = mel_spec[np.newaxis, ...]
+            # YAMNet 백본 추론 (audio → 1024-dim embedding)
+            audio_float32 = audio_buffer.astype(np.float32)
 
-            # Check if model expects INT8 input (quantized model)
-            input_dtype = self.input_details[0]['dtype']
-            if input_dtype == np.int8:
-                # Quantize input: float32 [0, 1] → int8 [-128, 127]
-                # Get quantization parameters
-                input_scale = self.input_details[0]['quantization'][0]
-                input_zero_point = self.input_details[0]['quantization'][1]
+            self.yamnet.set_tensor(self.yam_in_idx, audio_float32)
+            self.yamnet.invoke()
+            emb = self.yamnet.get_tensor(self.yam_out_details[self.yam_emb_idx]["index"])
 
-                # Quantize: q = f / scale + zero_point
-                mel_spec_quantized = (mel_spec / input_scale + input_zero_point).astype(np.int8)
-                input_data = mel_spec_quantized
+            # Embedding이 (T, 1024) 형태일 수 있으므로 평균
+            if emb.ndim == 2:
+                emb_vec = emb.mean(axis=0)  # (1024,)
             else:
-                input_data = mel_spec
+                emb_vec = emb.flatten()
 
-            # Run inference
-            self.interpreter.set_tensor(
-                self.input_details[0]['index'],
-                input_data
-            )
-            self.interpreter.invoke()
+            # Head 입력 shape에 맞게 조정
+            head_shape = self.head_in_details['shape']
+            if len(head_shape) == 2:
+                # (1, 1024) 형태
+                emb_input = emb_vec[np.newaxis, :].astype(np.float32)
+            else:
+                # (1024,) 형태
+                emb_input = emb_vec.astype(np.float32)
 
-            # Get 256-dim embedding from intermediate layer (not final classification output)
-            if self.embedding_tensor_index is None:
-                raise ValueError("Embedding tensor not found in model")
+            # Head 추론 (1024-dim → 17-class)
+            self.head.set_tensor(self.head_in_idx, emb_input)
+            self.head.invoke()
+            probs = self.head.get_tensor(self.head_out_idx).flatten()  # (17,)
 
-            # TFLite workaround: Access intermediate tensor data directly from buffer
-            # After invoke(), the tensor buffer should contain the computed values
-            try:
-                embedding = self.interpreter.get_tensor(self.embedding_tensor_index)
-            except ValueError:
-                # If get_tensor doesn't work, try accessing via internal API
-                tensor = self.interpreter._get_tensor_details(self.embedding_tensor_index)
-                embedding = self.interpreter._interpreter.tensor(self.interpreter._interpreter, self.embedding_tensor_index)
-
-            # Dequantize output if needed
-            embedding_dtype = self.embedding_tensor_details['dtype']
-            if embedding_dtype == np.int8:
-                # Dequantize: f = (q - zero_point) * scale
-                embedding_scale = self.embedding_tensor_details['quantization'][0]
-                embedding_zero_point = self.embedding_tensor_details['quantization'][1]
-                embedding = (embedding.astype(np.float32) - embedding_zero_point) * embedding_scale
-
-            # Remove batch dimension and return: (1, 256) → (256,)
-            if embedding.ndim == 2:
-                embedding = embedding[0]
-
-            return embedding.astype(np.float32)
+            return probs.astype(np.float32)
 
         except Exception as e:
-            print(f"Warning: Audio embedding extraction failed: {e}")
+            print(f"Warning: Audio classification failed: {e}")
             import traceback
             traceback.print_exc()
-            return self._simulate_audio_embedding(audio_buffer)
+            return self._simulate_audio_classification(audio_buffer)
 
-    def _simulate_audio_embedding(self, audio_buffer):
+    def _simulate_audio_classification(self, audio_buffer):
         """
-        Simulate 256-dimensional audio embedding based on audio energy
-        (For testing before YAMNet-256 model is fully integrated)
+        Simulate 17-class audio probabilities based on audio energy
+        (For testing before models are fully integrated)
 
         Returns:
-            np.ndarray: Simulated 256-dimensional embedding
+            np.ndarray: Simulated 17-dimensional probabilities
         """
-        # Calculate RMS energy
+        # RMS 에너지 계산
         rms = np.sqrt(np.mean(audio_buffer ** 2))
 
-        # Create a pseudo-embedding based on audio characteristics
-        # First 64 dims: energy-based features
-        # Next 64 dims: frequency-based (simulate low/mid/high)
-        # Last 128 dims: random noise (simulate learned features)
+        # 랜덤 확률 생성 (에너지 기반)
+        probs = np.random.rand(self.num_classes).astype(np.float32) * rms * 10
 
-        embedding = np.zeros(256, dtype=np.float32)
+        # Sigmoid로 [0, 1] 범위로 변환
+        probs = 1.0 / (1.0 + np.exp(-probs))
 
-        # Energy features (0-63)
-        embedding[0:64] = np.clip(rms * 10, 0, 1) + np.random.randn(64) * 0.1
+        # 약간의 sparsity 추가 (대부분 낮은 확률)
+        probs = probs * 0.1
 
-        # Frequency features (64-127) - simulate spectral content
-        if len(audio_buffer) > 512:
-            fft = np.abs(np.fft.rfft(audio_buffer[:512]))
-            low_freq = np.mean(fft[:50])
-            mid_freq = np.mean(fft[50:150])
-            high_freq = np.mean(fft[150:])
-            embedding[64:96] = low_freq * 0.01 + np.random.randn(32) * 0.05
-            embedding[96:128] = mid_freq * 0.01 + np.random.randn(32) * 0.05
+        return probs
 
-        # Context features (128-255) - random learned-like features
-        embedding[128:256] = np.random.randn(128) * 0.1
+    def get_top_sounds(self, audio_buffer, sample_rate=None, top_k=3, threshold=0.3):
+        """
+        Get top-k detected sounds above threshold
 
-        # Normalize to reasonable range [-1, 1]
-        embedding = np.clip(embedding, -1, 1)
+        Args:
+            audio_buffer: Audio samples
+            sample_rate: Sample rate
+            top_k: Number of top predictions to return
+            threshold: Minimum probability threshold
 
-        return embedding.astype(np.float32)
+        Returns:
+            list of (class_name, probability) tuples
+        """
+        probs = self.get_audio_embedding(audio_buffer, sample_rate)
+
+        # Top-k 추출
+        top_indices = np.argsort(-probs)[:top_k]
+
+        results = []
+        for idx in top_indices:
+            if probs[idx] >= threshold:
+                results.append((AUDIO_CLASSES[idx], float(probs[idx])))
+
+        return results
 
 
 def test_yamnet_processor():
-    """Test Yamnet processor without Webots"""
+    """Test YAMNet processor"""
     print("=" * 60)
-    print("Testing FR2.2: Yamnet-256 Audio Processor")
+    print("Testing FR2.2: YAMNet 17-class Audio Processor")
     print("=" * 60)
 
     processor = YamnetProcessor()
@@ -283,23 +225,28 @@ def test_yamnet_processor():
     # Simulate audio buffer (1 second of noise)
     sample_rate = 16000
     duration = 1.0
-    audio_buffer = np.random.randn(int(sample_rate * duration)) * 0.1
+    audio_buffer = np.random.randn(int(sample_rate * duration)).astype(np.float32) * 0.1
 
     print(f"\nTest audio: {len(audio_buffer)} samples @ {sample_rate}Hz")
 
-    # Test embedding extraction
-    embedding = processor.get_audio_embedding(audio_buffer, sample_rate)
+    # Test classification
+    probs = processor.get_audio_embedding(audio_buffer, sample_rate)
 
-    print(f"\nExtracted audio embedding:")
-    print(f"  Shape: {embedding.shape}")
-    print(f"  Dtype: {embedding.dtype}")
-    print(f"  Range: [{embedding.min():.3f}, {embedding.max():.3f}]")
-    print(f"  Mean: {embedding.mean():.3f}")
-    print(f"  First 10 values: {embedding[:10]}")
+    print(f"\nExtracted audio probabilities:")
+    print(f"  Shape: {probs.shape}")
+    print(f"  Dtype: {probs.dtype}")
+    print(f"  Range: [{probs.min():.3f}, {probs.max():.3f}]")
+    print(f"  Sum: {probs.sum():.3f}")
 
-    # Test silence (zero audio)
-    silence_embedding = processor.get_audio_embedding(None)
-    print(f"\nSilence embedding (all zeros): {np.all(silence_embedding == 0)}")
+    # Top sounds
+    top_sounds = processor.get_top_sounds(audio_buffer, sample_rate, top_k=5, threshold=0.0)
+    print(f"\nTop 5 detected sounds:")
+    for sound, prob in top_sounds:
+        print(f"  {sound:<15} {prob:.3f}")
+
+    # Test silence
+    silence_probs = processor.get_audio_embedding(None)
+    print(f"\nSilence probabilities (all zeros): {np.all(silence_probs == 0)}")
 
     print("\n" + "=" * 60)
     print("FR2.2 Test Complete!")

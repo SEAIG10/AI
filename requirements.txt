@@ -1,0 +1,28 @@
+# AI Models
+tensorflow>=2.13.0
+ultralytics>=8.0.0
+
+# MQTT Communication
+paho-mqtt==1.6.1
+
+# Audio Processing
+sounddevice>=0.4.6
+librosa>=0.10.0
+
+# Computer Vision
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# Utilities
+tqdm>=4.65.0
+python-dateutil>=2.8.2
+
+# Development
+pytest>=7.4.0
