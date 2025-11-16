@@ -1,6 +1,6 @@
 """
 Realtime Demo - Context Sensor (Spatial/Time/Pose)
-공간, 시간, Pose 정보를 생성하여 MQTT로 전송
+공간, 시간, Pose 정보를 생성하여 ZeroMQ로 전송
 """
 
 import sys
@@ -9,25 +9,20 @@ import os
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-import paho.mqtt.client as mqtt
-import pickle
+import zmq
 import time
 import numpy as np
 from datetime import datetime
 from realtime.utils import zone_to_onehot, get_time_features, ZONES
 
-# MQTT 설정
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC_SPATIAL = "sensor/spatial"
-MQTT_TOPIC_TIME = "sensor/time"
-MQTT_TOPIC_POSE = "sensor/pose"
+# ZeroMQ 설정
+ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
 
 
 class ContextSensor:
     """
     Context Sensor (Spatial, Time, Pose)
-    공간 정보, 시간 정보, Pose 정보를 생성하여 MQTT로 전송
+    공간 정보, 시간 정보, Pose 정보를 생성하여 ZeroMQ로 전송
     """
 
     def __init__(self, default_zone="living_room"):
@@ -41,10 +36,11 @@ class ContextSensor:
         print("📍 Context Sensor (Spatial/Time/Pose) Initializing...")
         print("="*60)
 
-        # MQTT 클라이언트
-        self.mqtt_client = mqtt.Client("context_sensor")
-        self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        print(f"✓ MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
+        # ZeroMQ Publisher 설정
+        self.zmq_context = zmq.Context()
+        self.zmq_socket = self.zmq_context.socket(zmq.PUB)
+        self.zmq_socket.connect(ZMQ_ENDPOINT)
+        print(f"✓ ZeroMQ connected to {ZMQ_ENDPOINT}")
 
         # 현재 Zone (실제로는 GPS로 판단, 데모에서는 수동 입력)
         self.current_zone = default_zone
@@ -97,34 +93,37 @@ class ContextSensor:
                 # 실제로는 sensor_visual에서 YOLO-Pose로 추출
                 pose_vec = np.zeros(51, dtype=np.float32)
 
-                # MQTT 전송 - Spatial
-                payload_spatial = pickle.dumps({
-                    'spatial': spatial_vec,
+                # ZeroMQ 전송 - Spatial
+                message_spatial = {
+                    'type': 'spatial',
+                    'data': spatial_vec,
                     'timestamp': time.time(),
                     'sample_count': sample_count,
                     'zone_name': self.current_zone
-                })
-                self.mqtt_client.publish(MQTT_TOPIC_SPATIAL, payload_spatial)
+                }
+                self.zmq_socket.send_pyobj(message_spatial)
 
-                # MQTT 전송 - Time
-                payload_time = pickle.dumps({
-                    'time': time_vec,
+                # ZeroMQ 전송 - Time
+                message_time = {
+                    'type': 'time',
+                    'data': time_vec,
                     'timestamp': time.time(),
                     'sample_count': sample_count,
                     'datetime': now.isoformat()
-                })
-                self.mqtt_client.publish(MQTT_TOPIC_TIME, payload_time)
+                }
+                self.zmq_socket.send_pyobj(message_time)
 
-                # MQTT 전송 - Pose
-                payload_pose = pickle.dumps({
-                    'pose': pose_vec,
+                # ZeroMQ 전송 - Pose
+                message_pose = {
+                    'type': 'pose',
+                    'data': pose_vec,
                     'timestamp': time.time(),
                     'sample_count': sample_count
-                })
-                self.mqtt_client.publish(MQTT_TOPIC_POSE, payload_pose)
+                }
+                self.zmq_socket.send_pyobj(message_pose)
 
                 # 로그 출력
-                print(f"[{sample_count:04d}] 📍 Context → MQTT: "
+                print(f"[{sample_count:04d}] 📍 Context → ZMQ: "
                       f"zone={self.current_zone}, "
                       f"hour={now.hour:02d}:{now.minute:02d}, "
                       f"pose=mock")
@@ -141,7 +140,8 @@ class ContextSensor:
     def cleanup(self):
         """리소스 정리"""
         print("\n🧹 Cleaning up Context Sensor...")
-        self.mqtt_client.disconnect()
+        self.zmq_socket.close()
+        self.zmq_context.term()
         print("✓ Context Sensor stopped!")
 
 

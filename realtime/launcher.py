@@ -69,9 +69,9 @@ def main():
     print("  2. Audio Sensor (YAMNet)")
     print("  3. Context Sensor (Spatial/Time/Pose)")
     print("  4. GRU Predictor")
-    print("\nMake sure MQTT broker (mosquitto) is running!")
-    print("  - macOS: brew services start mosquitto")
-    print("  - Linux: sudo systemctl start mosquitto")
+    print("\nProcesses communicate via ZeroMQ (IPC):")
+    print("  - Endpoint: ipc:///tmp/locus_sensors.ipc")
+    print("  - Pattern: PUB/SUB (sensors publish, predictor subscribes)")
     print("\nPress Ctrl+C to stop all processes.\n")
 
     # Ctrl+C 핸들러 등록
@@ -80,10 +80,10 @@ def main():
     input("Press ENTER to start...")
 
     try:
-        # 1. GRU Predictor 먼저 시작 (MQTT 메시지 수신 준비)
+        # 1. GRU Predictor 먼저 시작 (ZeroMQ BIND - subscriber must bind first)
         print("\n[1/4] Starting GRU Predictor...")
         start_process("gru_predictor.py")
-        time.sleep(3)  # 모델 로딩 대기
+        time.sleep(3)  # 모델 로딩 및 ZeroMQ BIND 대기
 
         # 2. Visual Sensor
         print("\n[2/4] Starting Visual Sensor (YOLO)...")

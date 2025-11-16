@@ -1,6 +1,6 @@
 """
 Realtime Demo - GRU Predictor
-MQTT로 센서 데이터 수집 후 GRU로 오염 예측
+ZeroMQ로 센서 데이터 수집 후 GRU로 오염 예측
 """
 
 import sys
@@ -9,8 +9,7 @@ import os
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-import paho.mqtt.client as mqtt
-import pickle
+import zmq
 import time
 import numpy as np
 import tensorflow as tf
@@ -21,9 +20,8 @@ from src.context_fusion.attention_context_encoder import create_attention_encode
 from src.model.gru_model import FedPerGRUModel
 from realtime.utils import print_prediction_result, ZONES
 
-# MQTT 설정
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+# ZeroMQ 설정
+ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
 
 # 모델 경로
 GRU_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'gru', 'gru_model.keras')
@@ -35,7 +33,7 @@ CONTEXT_BUFFER_SIZE = 30  # 30 timesteps
 class GRUPredictor:
     """
     GRU Predictor
-    MQTT로 센서 데이터를 받아서 AttentionContextEncoder → GRU로 예측
+    ZeroMQ로 센서 데이터를 받아서 AttentionContextEncoder → GRU로 예측
     """
 
     def __init__(self):
@@ -44,15 +42,13 @@ class GRUPredictor:
         print("🧠 GRU Predictor Initializing...")
         print("="*60)
 
-        # MQTT 클라이언트
-        self.mqtt_client = mqtt.Client("gru_predictor")
-        self.mqtt_client.on_message = self.on_message
-        self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        print(f"✓ MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
-
-        # 모든 센서 구독
-        self.mqtt_client.subscribe("sensor/#")
-        print("✓ Subscribed to sensor/#")
+        # ZeroMQ Subscriber 설정 (BIND - subscriber binds, publishers connect)
+        self.zmq_context = zmq.Context()
+        self.zmq_socket = self.zmq_context.socket(zmq.SUB)
+        self.zmq_socket.bind(ZMQ_ENDPOINT)
+        self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")  # Subscribe to all messages
+        print(f"✓ ZeroMQ bound to {ZMQ_ENDPOINT}")
+        print("✓ Subscribed to all sensor messages")
 
         # 모델 로드
         print("\n📦 Loading models...")
@@ -90,33 +86,31 @@ class GRUPredictor:
 
         print("\n✅ GRU Predictor ready!\n")
 
-    def on_message(self, client, userdata, msg):
+    def receive_messages(self):
         """
-        MQTT 메시지 수신 콜백
-
-        Args:
-            msg: MQTT message
+        ZeroMQ 메시지 수신 (폴링 방식)
         """
         try:
-            # 메시지 파싱
-            topic = msg.topic  # "sensor/visual"
-            data = pickle.loads(msg.payload)
+            # Non-blocking receive with timeout
+            if self.zmq_socket.poll(timeout=100):  # 100ms timeout
+                message = self.zmq_socket.recv_pyobj()
 
-            sensor_type = topic.split('/')[-1]  # "visual"
+                # 메시지 타입 확인
+                sensor_type = message.get('type')
 
-            # 센서 데이터 저장
-            if sensor_type in self.current_context:
-                self.current_context[sensor_type] = data[sensor_type]
+                # 센서 데이터 저장
+                if sensor_type in self.current_context:
+                    self.current_context[sensor_type] = message.get('data')
 
-                # 로그 (간단하게)
-                # print(f"  [MQTT] Received: {sensor_type}")
+                    # 로그 (간단하게)
+                    # print(f"  [ZMQ] Received: {sensor_type}")
 
-            # 모든 센서 데이터가 모였는지 확인
-            if all(v is not None for v in self.current_context.values()):
-                self.process_context()
+                # 모든 센서 데이터가 모였는지 확인
+                if all(v is not None for v in self.current_context.values()):
+                    self.process_context()
 
         except Exception as e:
-            print(f"⚠ Error in on_message: {e}")
+            print(f"⚠ Error in receive_messages: {e}")
 
     def process_context(self):
         """
@@ -186,14 +180,15 @@ class GRUPredictor:
 
     def run(self):
         """
-        Predictor 실행 (MQTT loop)
+        Predictor 실행 (ZeroMQ polling loop)
         """
         print("🚀 GRU Predictor started!")
         print(f"  - Waiting for {CONTEXT_BUFFER_SIZE} timesteps of sensor data...")
         print("  - Press Ctrl+C to quit\n")
 
         try:
-            self.mqtt_client.loop_forever()
+            while True:
+                self.receive_messages()
 
         except KeyboardInterrupt:
             print("\n⚠ Keyboard interrupt, stopping...")
@@ -204,7 +199,8 @@ class GRUPredictor:
     def cleanup(self):
         """리소스 정리"""
         print("\n🧹 Cleaning up GRU Predictor...")
-        self.mqtt_client.disconnect()
+        self.zmq_socket.close()
+        self.zmq_context.term()
         print("✓ GRU Predictor stopped!")
         print(f"\nStatistics:")
         print(f"  - Total timesteps collected: {self.timestep_count}")

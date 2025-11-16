@@ -1,6 +1,6 @@
 """
 Realtime Demo - Audio Sensor (YAMNet + 17-class Head)
-마이크로 소리 녹음 후 YAMNet으로 17-class 분류하여 MQTT로 전송
+마이크로 소리 녹음 후 YAMNet으로 17-class 분류하여 ZeroMQ로 전송
 """
 
 import sys
@@ -10,24 +10,21 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import sounddevice as sd
-import paho.mqtt.client as mqtt
-import pickle
+import zmq
 import time
 import numpy as np
 
 # Import YamnetProcessor from src
 from src.audio_recognition.yamnet_processor import YamnetProcessor, AUDIO_CLASSES
 
-# MQTT 설정
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC = "sensor/audio"
+# ZeroMQ 설정
+ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
 
 
 class AudioSensor:
     """
     YAMNet + 17-class Head 기반 Audio Sensor
-    마이크로 소리를 녹음하고 YAMNet으로 17-class 분류 후 MQTT로 전송
+    마이크로 소리를 녹음하고 YAMNet으로 17-class 분류 후 ZeroMQ로 전송
     """
 
     def __init__(self, sample_rate=16000):
@@ -43,10 +40,11 @@ class AudioSensor:
 
         self.sample_rate = sample_rate
 
-        # MQTT 클라이언트
-        self.mqtt_client = mqtt.Client("audio_sensor")
-        self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        print(f"✓ MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
+        # ZeroMQ Publisher 설정
+        self.zmq_context = zmq.Context()
+        self.zmq_socket = self.zmq_context.socket(zmq.PUB)
+        self.zmq_socket.connect(ZMQ_ENDPOINT)
+        print(f"✓ ZeroMQ connected to {ZMQ_ENDPOINT}")
 
         # YAMNet 프로세서 로드 (src/audio_recognition에서 임포트)
         print("Loading YAMNet processor...")
@@ -109,20 +107,21 @@ class AudioSensor:
                         threshold=0.3
                     )
 
-                    # MQTT 전송
-                    payload = pickle.dumps({
-                        'audio': probs,  # (17,) 확률 벡터
+                    # ZeroMQ 전송
+                    message = {
+                        'type': 'audio',
+                        'data': probs,  # (17,) 확률 벡터
                         'timestamp': time.time(),
                         'sample_count': sample_count
-                    })
-                    self.mqtt_client.publish(MQTT_TOPIC, payload)
+                    }
+                    self.zmq_socket.send_pyobj(message)
 
                     # 로그 출력
                     if top_sounds:
                         sounds_str = ", ".join([f"{name}({prob:.2f})" for name, prob in top_sounds])
-                        print(f"→ MQTT: {sounds_str}")
+                        print(f"→ ZMQ: {sounds_str}")
                     else:
-                        print(f"→ MQTT: (no significant sounds)")
+                        print(f"→ ZMQ: (no significant sounds)")
 
                 except Exception as e:
                     print(f"⚠ Error: {e}")
@@ -143,7 +142,8 @@ class AudioSensor:
     def cleanup(self):
         """리소스 정리"""
         print("\n🧹 Cleaning up Audio Sensor...")
-        self.mqtt_client.disconnect()
+        self.zmq_socket.close()
+        self.zmq_context.term()
         print("✓ Audio Sensor stopped!")
 
 

@@ -1,6 +1,6 @@
 """
 Realtime Demo - Visual Sensor (YOLO)
-웹캠으로 객체 감지 후 MQTT로 전송
+웹캠으로 객체 감지 후 ZeroMQ로 전송
 """
 
 import sys
@@ -11,16 +11,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import cv2
 from ultralytics import YOLO
-import paho.mqtt.client as mqtt
-import pickle
+import zmq
 import time
 import numpy as np
 from realtime.utils import yolo_results_to_14dim, YOLO_CLASSES
 
-# MQTT 설정
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC = "sensor/visual"
+# ZeroMQ 설정
+ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
 
 # YOLO 모델 경로
 YOLO_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'yolo', 'best.pt')
@@ -29,7 +26,7 @@ YOLO_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'yolo'
 class VisualSensor:
     """
     YOLO 기반 Visual Sensor
-    웹캠에서 프레임을 읽고 YOLO로 객체 감지 후 MQTT로 전송
+    웹캠에서 프레임을 읽고 YOLO로 객체 감지 후 ZeroMQ로 전송
     """
 
     def __init__(self, camera_id=0):
@@ -43,10 +40,11 @@ class VisualSensor:
         print("🎥 Visual Sensor (YOLO) Initializing...")
         print("="*60)
 
-        # MQTT 클라이언트
-        self.mqtt_client = mqtt.Client("visual_sensor")
-        self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        print(f"✓ MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
+        # ZeroMQ Publisher 설정
+        self.zmq_context = zmq.Context()
+        self.zmq_socket = self.zmq_context.socket(zmq.PUB)
+        self.zmq_socket.connect(ZMQ_ENDPOINT)
+        print(f"✓ ZeroMQ connected to {ZMQ_ENDPOINT}")
 
         # YOLO 모델 로드
         print(f"Loading YOLO model from: {YOLO_MODEL_PATH}")
@@ -95,17 +93,18 @@ class VisualSensor:
                 detected_indices = np.where(visual_vec > 0)[0]
                 detected_objects = [YOLO_CLASSES[i] for i in detected_indices]
 
-                # MQTT 전송
-                payload = pickle.dumps({
-                    'visual': visual_vec,
+                # ZeroMQ 전송
+                message = {
+                    'type': 'visual',
+                    'data': visual_vec,
                     'timestamp': time.time(),
                     'frame_count': frame_count
-                })
-                self.mqtt_client.publish(MQTT_TOPIC, payload)
+                }
+                self.zmq_socket.send_pyobj(message)
 
                 # 로그 출력
                 frame_count += 1
-                print(f"[{frame_count:04d}] 📹 Visual → MQTT: {len(detected_objects)} objects detected", end="")
+                print(f"[{frame_count:04d}] 📹 Visual → ZMQ: {len(detected_objects)} objects detected", end="")
                 if detected_objects:
                     print(f" ({', '.join(detected_objects[:3])}{'...' if len(detected_objects) > 3 else ''})")
                 else:
@@ -134,7 +133,8 @@ class VisualSensor:
         print("\n🧹 Cleaning up Visual Sensor...")
         self.cap.release()
         cv2.destroyAllWindows()
-        self.mqtt_client.disconnect()
+        self.zmq_socket.close()
+        self.zmq_context.term()
         print("✓ Visual Sensor stopped!")
 
 
