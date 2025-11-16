@@ -33,7 +33,7 @@ datasets/
 models/yolo/
 models/gru/
 models/audio/*.h5
-
+models
 # YOLO training outputs
 runs/                     # Training results and checkpoints
 weights/                  # Weight files
