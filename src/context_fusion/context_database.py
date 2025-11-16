@@ -1,6 +1,6 @@
 """
-FR2.3: Context Vector Database
-SQLite storage for time-series context vectors
+컨텍스트 벡터 데이터베이스
+시계열 컨텍스트 벡터를 저장하기 위한 SQLite 데이터베이스입니다.
 """
 
 import sqlite3
@@ -12,35 +12,35 @@ from datetime import datetime
 
 class ContextDatabase:
     """
-    FR2.3: SQLite database for storing context vectors
-    Provides time-series storage and querying of multimodal context data
+    컨텍스트 벡터 저장을 위한 SQLite 데이터베이스 클래스입니다.
+    다중 모드 컨텍스트 데이터의 시계열 저장 및 조회를 제공합니다.
     """
 
     def __init__(self, db_path: str = "data/context_vectors.db"):
         """
-        Initialize context database
+        컨텍스트 데이터베이스를 초기화합니다.
 
         Args:
-            db_path: Path to SQLite database file
+            db_path: SQLite 데이터베이스 파일 경로
         """
         self.db_path = db_path
 
-        # Create data directory if needed
+        # 필요시 데이터 디렉토리를 생성합니다.
         db_dir = os.path.dirname(db_path)
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir)
-            print(f"Created database directory: {db_dir}")
+            print(f"데이터베이스 디렉토리를 생성했습니다: {db_dir}")
 
-        # Initialize database
+        # 데이터베이스 초기화
         self._init_database()
-        print(f"Context database initialized: {db_path}")
+        print(f"컨텍스트 데이터베이스가 초기화되었습니다: {db_path}")
 
     def _init_database(self):
-        """Create database schema if not exists"""
+        """데이터베이스 스키마가 존재하지 않으면 생성합니다."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Context vectors table (time-series data)
+        # 컨텍스트 벡터 테이블 (시계열 데이터)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS context_vectors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,13 +56,13 @@ class ContextDatabase:
             )
         """)
 
-        # Index for fast time-based queries
+        # 시간 기반의 빠른 조회를 위한 인덱스
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_timestamp
             ON context_vectors(timestamp)
         """)
 
-        # Index for zone-based queries
+        # Zone 기반의 빠른 조회를 위한 인덱스
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_zone_id
             ON context_vectors(zone_id)
@@ -73,23 +73,23 @@ class ContextDatabase:
 
     def insert_context(self, context: Dict) -> int:
         """
-        Insert context vector into database
+        컨텍스트 벡터를 데이터베이스에 삽입합니다.
 
         Args:
-            context: Context vector dict
+            context: 컨텍스트 벡터 딕셔너리
 
         Returns:
-            Row ID of inserted context
+            삽입된 행의 ID
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Extract position
+        # 위치 정보 추출
         position = context.get("position")
         position_x = position["x"] if position else None
         position_y = position["y"] if position else None
 
-        # Serialize JSON fields
+        # JSON 필드 직렬화
         visual_events_json = json.dumps(context.get("visual_events", []))
         audio_events_json = json.dumps(context.get("audio_events", []))
 
@@ -117,13 +117,13 @@ class ContextDatabase:
 
     def get_recent_contexts(self, limit: int = 100) -> List[Dict]:
         """
-        Get most recent context vectors
+        가장 최근의 컨텍스트 벡터를 가져옵니다.
 
         Args:
-            limit: Maximum number of contexts to retrieve
+            limit: 검색할 최대 컨텍스트 수
 
         Returns:
-            List of context vectors (newest first)
+            컨텍스트 벡터의 리스트 (최신순)
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -142,14 +142,14 @@ class ContextDatabase:
 
     def get_contexts_by_zone(self, zone_id: str, limit: int = 100) -> List[Dict]:
         """
-        Get context vectors for a specific zone
+        특정 구역의 컨텍스트 벡터를 가져옵니다.
 
         Args:
-            zone_id: Zone identifier (e.g., "living_room")
-            limit: Maximum number of contexts to retrieve
+            zone_id: 구역 식별자 (예: "living_room")
+            limit: 검색할 최대 컨텍스트 수
 
         Returns:
-            List of context vectors (newest first)
+            컨텍스트 벡터의 리스트 (최신순)
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -173,14 +173,14 @@ class ContextDatabase:
         end_time: float
     ) -> List[Dict]:
         """
-        Get context vectors within time range
+        지정된 시간 범위 내의 컨텍스트 벡터를 가져옵니다.
 
         Args:
-            start_time: Start timestamp (Unix time)
-            end_time: End timestamp (Unix time)
+            start_time: 시작 타임스탬프 (Unix 시간)
+            end_time: 종료 타임스탬프 (Unix 시간)
 
         Returns:
-            List of context vectors (oldest first)
+            컨텍스트 벡터의 리스트 (오래된순)
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -199,33 +199,26 @@ class ContextDatabase:
 
     def get_statistics(self) -> Dict:
         """
-        Get database statistics
+        데이터베이스 통계를 가져옵니다.
 
         Returns:
-            Dict with database stats:
-            {
-                "total_contexts": 1234,
-                "earliest_timestamp": 1678886400.0,
-                "latest_timestamp": 1678972800.0,
-                "zones": ["living_room", "kitchen", ...],
-                "duration_hours": 24.0
-            }
+            데이터베이스 통계를 담은 딕셔너리
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Total contexts
+        # 전체 컨텍스트 수
         cursor.execute("SELECT COUNT(*) FROM context_vectors")
         total = cursor.fetchone()[0]
 
-        # Time range
+        # 시간 범위
         cursor.execute("""
             SELECT MIN(timestamp), MAX(timestamp)
             FROM context_vectors
         """)
         earliest, latest = cursor.fetchone()
 
-        # Unique zones
+        # 고유한 구역
         cursor.execute("SELECT DISTINCT zone_id FROM context_vectors")
         zones = [row[0] for row in cursor.fetchall()]
 
@@ -244,23 +237,23 @@ class ContextDatabase:
         }
 
     def clear_database(self):
-        """Delete all context vectors (use with caution!)"""
+        """모든 컨텍스트 벡터를 삭제합니다 (주의해서 사용)."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM context_vectors")
         conn.commit()
         conn.close()
-        print("Database cleared!")
+        print("데이터베이스가 초기화되었습니다!")
 
     def _row_to_context(self, row: sqlite3.Row) -> Dict:
         """
-        Convert database row to context vector dict
+        데이터베이스 행을 컨텍스트 벡터 딕셔너리로 변환합니다.
 
         Args:
-            row: SQLite row
+            row: SQLite 행 객체
 
         Returns:
-            Context vector dict
+            컨텍스트 벡터 딕셔너리
         """
         position = None
         if row["position_x"] is not None and row["position_y"] is not None:
@@ -282,15 +275,15 @@ class ContextDatabase:
 
 
 def test_context_database():
-    """Test context database operations"""
+    """컨텍스트 데이터베이스 작업 테스트"""
     print("=" * 60)
-    print("Testing FR2.3: Context Database")
+    print("컨텍스트 데이터베이스 테스트")
     print("=" * 60)
 
-    # Create test database
+    # 테스트 데이터베이스 생성
     db = ContextDatabase("data/test_context.db")
 
-    # Create test contexts
+    # 테스트 컨텍스트 생성
     contexts = [
         {
             "timestamp": 1678886400.0,
@@ -320,32 +313,32 @@ def test_context_database():
         }
     ]
 
-    # Insert contexts
-    print("\nInserting test contexts...")
+    # 컨텍스트 삽입
+    print("\n테스트 컨텍스트 삽입 중...")
     for ctx in contexts:
         row_id = db.insert_context(ctx)
-        print(f"  Inserted context {row_id}: {ctx['context_summary']}")
+        print(f"  삽입된 컨텍스트 {row_id}: {ctx['context_summary']}")
 
-    # Query recent contexts
-    print("\nRecent contexts:")
+    # 최근 컨텍스트 조회
+    print("\n최근 컨텍스트:")
     recent = db.get_recent_contexts(limit=5)
     for ctx in recent:
         print(f"  [{ctx['id']}] {ctx['context_summary']}")
 
-    # Query by zone
-    print("\nLiving room contexts:")
+    # 구역별 조회
+    print("\n거실 컨텍스트:")
     living_room = db.get_contexts_by_zone("living_room")
     for ctx in living_room:
         print(f"  [{ctx['id']}] {ctx['context_summary']}")
 
-    # Statistics
-    print("\nDatabase statistics:")
+    # 통계
+    print("\n데이터베이스 통계:")
     stats = db.get_statistics()
     for key, value in stats.items():
         print(f"  {key}: {value}")
 
     print("\n" + "=" * 60)
-    print("FR2.3 Database Test Complete!")
+    print("데이터베이스 테스트 완료!")
     print("=" * 60)
 
 

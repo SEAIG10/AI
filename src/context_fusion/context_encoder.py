@@ -1,6 +1,6 @@
 """
-FR2.3.3: Context Encoder
-Converts JSON Context Vectors to 108-dimensional Numerical Vectors for GRU training
+컨텍스트 인코더
+JSON 형식의 컨텍스트 벡터를 GRU 학습에 사용될 수 있는 고정된 크기의 수치 벡터로 변환합니다.
 """
 
 import numpy as np
@@ -10,21 +10,21 @@ from typing import Dict, List, Optional
 
 class ContextEncoder:
     """
-    FR2.3.3: Encodes JSON Context Vectors into fixed 338-dimensional numerical vectors
+    JSON 형식의 컨텍스트 벡터를 고정된 338차원의 수치 벡터로 인코딩합니다.
 
-    Vector composition:
-    - Time features: 10 dimensions
-    - Spatial features: 7 dimensions (zone one-hot)
-    - Visual features: 14 dimensions (Custom YOLO 14 classes, multi-hot)
-    - Audio features: 256 dimensions (YAMNet-256 embedding)
-    - Keypoints features: 51 dimensions (raw normalized pose)
-    Total: 338 dimensions
+    벡터 구성:
+    - 시간 특징: 10차원
+    - 공간 특징: 7차원 (구역 원-핫 인코딩)
+    - 시각 특징: 14차원 (사용자 정의 YOLO 14개 클래스, 멀티-핫 인코딩)
+    - 오디오 특징: 256차원 (YAMNet-256 임베딩)
+    - 키포인트 특징: 51차원 (정규화된 원본 자세 정보)
+    총: 338차원
     """
 
     def __init__(self):
-        """Initialize encoder with feature mappings"""
+        """특징 매핑과 함께 인코더를 초기화합니다."""
 
-        # FR1.2: 7 semantic zones (alphabetical order for consistency)
+        # 7개의 의미론적 공간 (일관성을 위해 알파벳 순서로 정렬)
         self.zone_labels = [
             "bathroom",      # 0
             "bedroom_1",     # 1
@@ -36,53 +36,49 @@ class ContextEncoder:
         ]
         self.zone_to_idx = {zone: idx for idx, zone in enumerate(self.zone_labels)}
 
-        # Custom YOLO 14 classes (HomeObjects-3K + HD10K)
-        # See: /datasets/vacuum_cleaner.yaml
+        # 사용자 정의 YOLO 14개 클래스 (HomeObjects-3K + HD10K 데이터셋 기반)
         self.visual_classes = [
-            "bed",           # 0 - furniture
-            "sofa",          # 1 - furniture
-            "chair",         # 2 - furniture
-            "table",         # 3 - furniture
-            "lamp",          # 4 - object
-            "tv",            # 5 - electronics
-            "laptop",        # 6 - electronics
-            "wardrobe",      # 7 - furniture
-            "window",        # 8 - structure
-            "door",          # 9 - structure
-            "potted plant",  # 10 - decoration
-            "photo frame",   # 11 - decoration
-            "solid_waste",   # 12 - dirt (HD10K: crumbs, dust, trash)
-            "liquid_stain"   # 13 - dirt (HD10K: spills, water stains)
+            "bed",           # 0 - 가구
+            "sofa",          # 1 - 가구
+            "chair",         # 2 - 가구
+            "table",         # 3 - 가구
+            "lamp",          # 4 - 사물
+            "tv",            # 5 - 전자제품
+            "laptop",        # 6 - 전자제품
+            "wardrobe",      # 7 - 가구
+            "window",        # 8 - 구조물
+            "door",          # 9 - 구조물
+            "potted plant",  # 10 - 장식
+            "photo frame",   # 11 - 장식
+            "solid_waste",   # 12 - 오염 (부스러기, 먼지 등)
+            "liquid_stain"   # 13 - 오염 (액체 얼룩 등)
         ]
         self.visual_to_idx = {cls: idx for idx, cls in enumerate(self.visual_classes)}
 
-        # Audio: YAMNet-256 embedding (256 dimensions)
+        # 오디오: YAMNet-256 임베딩 (256 차원)
         self.audio_embedding_dim = 256
-
-        # Time of day categories (5 categories)
-        self.time_of_day_labels = ["dawn", "morning", "afternoon", "evening", "night"]
 
     def encode(self, context: Dict) -> np.ndarray:
         """
-        Encode JSON context vector to 338-dimensional numerical vector
+        JSON 컨텍스트 벡터를 338차원의 수치 벡터로 인코딩합니다.
 
         Args:
-            context: JSON context dict from ContextVector.create_context()
+            context: ContextVector.create_context()로부터 생성된 JSON 컨텍스트 딕셔너리
 
         Returns:
-            338-dimensional numpy array [time(10) + spatial(7) + visual(14) + audio(256) + keypoints(51)]
+            338차원 numpy 배열 [시간(10) + 공간(7) + 시각(14) + 오디오(256) + 키포인트(51)]
         """
-        # Extract timestamp
+        # 타임스탬프 추출
         timestamp = context.get("timestamp", 0)
 
-        # Encode each component
-        time_features = self._encode_time(timestamp)        # 10 dim
-        spatial_features = self._encode_spatial(context)    # 7 dim
-        visual_features = self._encode_visual(context)      # 14 dim (Custom YOLO)
-        audio_features = self._encode_audio(context)        # 256 dim (YAMNet-256 embedding)
-        keypoints_features = self._encode_keypoints(context)  # 51 dim
+        # 각 구성 요소 인코딩
+        time_features = self._encode_time(timestamp)        # 10차원
+        spatial_features = self._encode_spatial(context)    # 7차원
+        visual_features = self._encode_visual(context)      # 14차원 (사용자 정의 YOLO)
+        audio_features = self._encode_audio(context)        # 256차원 (YAMNet-256 임베딩)
+        keypoints_features = self._encode_keypoints(context)  # 51차원
 
-        # Concatenate all features
+        # 모든 특징 연결
         vector = np.concatenate([
             time_features,
             spatial_features,
@@ -96,73 +92,29 @@ class ContextEncoder:
 
     def _encode_time(self, timestamp: float) -> np.ndarray:
         """
-        FR2.3.3(a): Encode time features (10 dimensions)
-
-        Returns:
-            [hour_sin, hour_cos, dow_sin, dow_cos, is_weekend,
-             is_meal_time, is_work_time, tod_dawn, tod_morning, tod_afternoon, tod_evening, tod_night]
-
-        Wait, that's 12 dimensions. Let me fix:
-        Actually time_of_day should use 5 dimensions but we need to make it 10 total.
-        Let me recalculate:
-        - hour_sin, hour_cos: 2
-        - dow_sin, dow_cos: 2
-        - is_weekend: 1
-        - is_meal_time: 1
-        - is_work_time: 1
-        - time_of_day one-hot: 5
-        Total = 12 dimensions
-
-        But doc says 10 dimensions. Let me check...
-        Looking at the doc again, it says "~10차원" so approximately 10.
-        But let me be more precise. The doc lists:
-        - hour: cyclic (2)
-        - day_of_week: cyclic (2)
-        - is_weekend: (1)
-        - is_meal_time: (1)
-        - is_work_time: (1)
-        - time_of_day: one-hot [5] (5)
-        Total = 2+2+1+1+1+5 = 12
-
-        Hmm, but the total should be 108. Let me recalculate:
-        10 + 7 + 85 + 6 = 108 ✓
-
-        So time features should be exactly 10. Let me adjust:
-        Option 1: Remove time_of_day one-hot (keep it simpler)
-        - hour_sin, hour_cos: 2
-        - dow_sin, dow_cos: 2
-        - is_weekend: 1
-        - is_meal_time: 1
-        - is_work_time: 1
-        - hour_of_day (normalized): 1
-        - day_of_week (normalized): 1
-        - month (normalized): 1
-        Total = 10 ✓
-
-        Let me do this version for simplicity.
+        시간 특징을 10차원 벡터로 인코딩합니다.
+        - 시간(hour)과 요일(day of week)을 주기적(cyclic)으로 인코딩하고,
+        - 주말, 식사 시간, 근무 시간 여부를 이진(binary) 특징으로,
+        - 시간, 요일, 월을 정규화(normalized)하여 구성합니다.
         """
         dt = datetime.fromtimestamp(timestamp)
 
-        # Cyclic encoding for hour (0-23)
+        # 시간을 주기적(cyclic)으로 인코딩 (0-23)
         hour = dt.hour
         hour_sin = np.sin(2 * np.pi * hour / 24)
         hour_cos = np.cos(2 * np.pi * hour / 24)
 
-        # Cyclic encoding for day of week (0=Monday, 6=Sunday)
+        # 요일을 주기적(cyclic)으로 인코딩 (0=월요일, 6=일요일)
         dow = dt.weekday()
         dow_sin = np.sin(2 * np.pi * dow / 7)
         dow_cos = np.cos(2 * np.pi * dow / 7)
 
-        # Binary features
+        # 이진(binary) 특징
         is_weekend = 1.0 if dow >= 5 else 0.0
-
-        # Meal time: 07-09, 12-14, 18-20
         is_meal_time = 1.0 if (7 <= hour <= 9) or (12 <= hour <= 14) or (18 <= hour <= 20) else 0.0
-
-        # Work time: 09-18, weekdays only
         is_work_time = 1.0 if (9 <= hour <= 18 and dow < 5) else 0.0
 
-        # Normalized features (0-1 range)
+        # 정규화된 특징 (0-1 범위)
         hour_normalized = hour / 24.0
         dow_normalized = dow / 7.0
         month_normalized = dt.month / 12.0
@@ -180,15 +132,14 @@ class ContextEncoder:
 
     def _encode_spatial(self, context: Dict) -> np.ndarray:
         """
-        FR2.3.3(b): Encode spatial features (7 dimensions)
-        One-hot encoding of zone_id
+        공간 특징을 7차원 벡터로 인코딩합니다 (zone_id의 원-핫 인코딩).
 
         Returns:
-            7-dimensional one-hot vector
+            7차원 원-핫 벡터
         """
         zone_id = context.get("zone_id", "unknown")
 
-        # One-hot encoding
+        # 원-핫 인코딩
         vector = np.zeros(7, dtype=np.float32)
         if zone_id in self.zone_to_idx:
             vector[self.zone_to_idx[zone_id]] = 1.0
@@ -197,15 +148,14 @@ class ContextEncoder:
 
     def _encode_visual(self, context: Dict) -> np.ndarray:
         """
-        FR2.3.3(c): Encode visual features (14 dimensions)
-        Multi-hot encoding of detected object classes from Custom YOLO
+        시각 특징을 14차원 벡터로 인코딩합니다 (사용자 정의 YOLO 클래스의 멀티-핫 인코딩).
 
         Returns:
-            14-dimensional multi-hot vector (multiple 1s possible)
+            14차원 멀티-핫 벡터 (여러 개의 1을 가질 수 있음)
         """
         visual_events = context.get("visual_events", [])
 
-        # Multi-hot encoding
+        # 멀티-핫 인코딩
         vector = np.zeros(14, dtype=np.float32)
 
         for event in visual_events:
@@ -217,25 +167,24 @@ class ContextEncoder:
 
     def _encode_audio(self, context: Dict) -> np.ndarray:
         """
-        FR2.3.3(d): Encode audio features (256 dimensions)
-        Direct pass-through of YAMNet-256 embedding
+        오디오 특징을 256차원 벡터로 인코딩합니다 (YAMNet-256 임베딩 직접 사용).
 
         Returns:
-            256-dimensional audio embedding vector (continuous values)
+            256차원 오디오 임베딩 벡터 (연속적인 값)
         """
         audio_embedding = context.get("audio_embedding", None)
 
-        # If no audio embedding, return zeros (silence)
+        # 오디오 임베딩이 없으면 0으로 채워진 벡터(무음)를 반환합니다.
         if audio_embedding is None:
             return np.zeros(self.audio_embedding_dim, dtype=np.float32)
 
-        # Convert to numpy array if needed
+        # 필요시 numpy 배열로 변환합니다.
         if isinstance(audio_embedding, list):
             embedding_array = np.array(audio_embedding, dtype=np.float32)
         else:
             embedding_array = audio_embedding.astype(np.float32)
 
-        # Ensure correct shape
+        # 올바른 shape인지 확인합니다.
         if embedding_array.shape != (self.audio_embedding_dim,):
             print(f"Warning: Expected audio embedding shape ({self.audio_embedding_dim},), got {embedding_array.shape}. Using zeros.")
             return np.zeros(self.audio_embedding_dim, dtype=np.float32)
@@ -244,25 +193,24 @@ class ContextEncoder:
 
     def _encode_keypoints(self, context: Dict) -> np.ndarray:
         """
-        Encode raw pose keypoints (51 dimensions)
-        Direct pass-through of normalized keypoint data
+        원본 자세 키포인트를 51차원 벡터로 인코딩합니다 (정규화된 데이터 직접 사용).
 
         Returns:
-            51-dimensional vector (17 keypoints × 3 values each)
+            51차원 벡터 (17개 키포인트 × 3개 값)
         """
         keypoints_data = context.get("keypoints", None)
 
-        # If no keypoints, return zeros
+        # 키포인트가 없으면 0으로 채워진 벡터를 반환합니다.
         if keypoints_data is None:
             return np.zeros(51, dtype=np.float32)
 
-        # Convert to numpy array if needed
+        # 필요시 numpy 배열로 변환합니다.
         if isinstance(keypoints_data, list):
             keypoints_array = np.array(keypoints_data, dtype=np.float32)
         else:
             keypoints_array = keypoints_data.astype(np.float32)
 
-        # Ensure correct shape
+        # 올바른 shape인지 확인합니다.
         if keypoints_array.shape != (51,):
             print(f"Warning: Expected keypoints shape (51,), got {keypoints_array.shape}. Using zeros.")
             return np.zeros(51, dtype=np.float32)
@@ -271,26 +219,26 @@ class ContextEncoder:
 
     def encode_batch(self, contexts: List[Dict]) -> np.ndarray:
         """
-        Encode a batch of contexts
+        컨텍스트 배치를 인코딩합니다.
 
         Args:
-            contexts: List of JSON context dicts
+            contexts: JSON 컨텍스트 딕셔너리 리스트
 
         Returns:
-            (N, 338) numpy array
+            (N, 338) 크기의 numpy 배열
         """
         return np.array([self.encode(ctx) for ctx in contexts], dtype=np.float32)
 
     def get_feature_names(self) -> List[str]:
         """
-        Get human-readable feature names for debugging
+        디버깅을 위해 사람이 읽을 수 있는 특징 이름을 가져옵니다.
 
         Returns:
-            List of 338 feature names
+            338개 특징 이름의 리스트
         """
         names = []
 
-        # Time features (10)
+        # 시간 특징 (10)
         names.extend([
             "hour_sin", "hour_cos",
             "dow_sin", "dow_cos",
@@ -298,16 +246,16 @@ class ContextEncoder:
             "hour_norm", "dow_norm", "month_norm"
         ])
 
-        # Spatial features (7)
+        # 공간 특징 (7)
         names.extend([f"zone_{zone}" for zone in self.zone_labels])
 
-        # Visual features (14) - Custom YOLO
+        # 시각 특징 (14) - 사용자 정의 YOLO
         names.extend([f"obj_{cls}" for cls in self.visual_classes])
 
-        # Audio features (256) - YAMNet-256 embedding
+        # 오디오 특징 (256) - YAMNet-256 임베딩
         names.extend([f"audio_emb_{i}" for i in range(256)])
 
-        # Keypoints features (51)
+        # 키포인트 특징 (51)
         keypoint_names = [
             "nose", "left_eye", "right_eye", "left_ear", "right_ear",
             "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
@@ -321,17 +269,17 @@ class ContextEncoder:
 
     def decode_debug(self, vector: np.ndarray) -> Dict:
         """
-        Convert numerical vector back to human-readable format (for debugging)
+        수치 벡터를 디버깅을 위해 사람이 읽을 수 있는 형식으로 다시 변환합니다.
 
         Args:
-            vector: 338-dimensional numpy array
+            vector: 338차원 numpy 배열
 
         Returns:
-            Dict with decoded features
+            디코딩된 특징을 담은 딕셔너리
         """
         feature_names = self.get_feature_names()
 
-        # Time features (0-9)
+        # 시간 특징 (0-9)
         time_features = {
             "hour_sin": vector[0],
             "hour_cos": vector[1],
@@ -341,14 +289,14 @@ class ContextEncoder:
             "is_work_time": bool(vector[6] > 0.5)
         }
 
-        # Spatial features (10-16)
+        # 공간 특징 (10-16)
         zone_vector = vector[10:17]
         zone_idx = np.argmax(zone_vector) if np.max(zone_vector) > 0 else None
         spatial_features = {
             "zone": self.zone_labels[zone_idx] if zone_idx is not None else "unknown"
         }
 
-        # Visual features (17-30)
+        # 시각 특징 (17-30)
         visual_vector = vector[17:31]
         detected_objects = [self.visual_classes[i] for i, v in enumerate(visual_vector) if v > 0.5]
         visual_features = {
@@ -356,7 +304,7 @@ class ContextEncoder:
             "count": len(detected_objects)
         }
 
-        # Audio features (31-286)
+        # 오디오 특징 (31-286)
         audio_embedding = vector[31:287]
         has_audio = np.any(audio_embedding != 0)
         audio_features = {
@@ -366,7 +314,7 @@ class ContextEncoder:
             "embedding_shape": "(256,)"
         }
 
-        # Keypoints features (287-337)
+        # 키포인트 특징 (287-337)
         keypoints_vector = vector[287:338]
         has_pose = np.any(keypoints_vector != 0)
         keypoints_features = {
@@ -385,14 +333,14 @@ class ContextEncoder:
 
 
 def test_context_encoder():
-    """Test context encoder"""
+    """컨텍스트 인코더 테스트"""
     print("=" * 70)
-    print("FR2.3.3: Context Encoder Test")
+    print("컨텍스트 인코더 테스트")
     print("=" * 70)
 
     encoder = ContextEncoder()
 
-    # Test context from our previous example
+    # 이전 예제의 테스트 컨텍스트
     test_context = {
         "timestamp": 1678886400.0,  # 2023-03-15 12:00:00 UTC
         "position": {"x": -5.0, "y": -3.0},
@@ -409,40 +357,40 @@ def test_context_encoder():
         "context_summary": "living_room | 3 objects | Television"
     }
 
-    print("\n[1] Original JSON Context:")
-    print(f"  Zone: {test_context['zone_id']}")
-    print(f"  Visual: {[e['class'] for e in test_context['visual_events']]}")
-    print(f"  Audio: {test_context['audio_events'][0]['event']}")
+    print("\n[1] 원본 JSON 컨텍스트:")
+    print(f"  구역: {test_context['zone_id']}")
+    print(f"  시각: {[e['class'] for e in test_context['visual_events']]}")
+    print(f"  오디오: {test_context['audio_events'][0]['event']}")
 
-    print("\n[2] Encoding to Numerical Vector...")
+    print("\n[2] 수치 벡터로 인코딩 중...")
     vector = encoder.encode(test_context)
     print(f"  Shape: {vector.shape}")
     print(f"  Dtype: {vector.dtype}")
-    print(f"  First 20 values: {vector[:20]}")
+    print(f"  처음 20개 값: {vector[:20]}")
 
-    print("\n[3] Feature Breakdown:")
-    print(f"  Time features (0-9): {vector[0:10]}")
-    print(f"  Spatial features (10-16): {vector[10:17]}")
-    print(f"  Visual features (17-30): {vector[17:31].sum()} objects detected")
-    print(f"  Audio features (31-286): {vector[31:287].sum():.2f} embedding norm")
-    print(f"  Keypoints features (287-337): {vector[287:338].sum():.2f} pose sum")
+    print("\n[3] 특징 분해:")
+    print(f"  시간 특징 (0-9): {vector[0:10]}")
+    print(f"  공간 특징 (10-16): {vector[10:17]}")
+    print(f"  시각 특징 (17-30): {vector[17:31].sum()} 객체 감지됨")
+    print(f"  오디오 특징 (31-286): {vector[31:287].sum():.2f} 임베딩 norm")
+    print(f"  키포인트 특징 (287-337): {vector[287:338].sum():.2f} 자세 합계")
 
-    print("\n[4] Decode Debug:")
+    print("\n[4] 디버그용 디코딩:")
     decoded = encoder.decode_debug(vector)
-    print(f"  Estimated hour: {decoded['time']['estimated_hour']}")
-    print(f"  Zone: {decoded['spatial']['zone']}")
-    print(f"  Objects: {decoded['visual']['objects']}")
-    print(f"  Has audio: {decoded['audio']['has_audio']}")
-    print(f"  Has pose: {decoded['keypoints']['has_pose']}")
+    print(f"  추정 시간: {decoded['time']['estimated_hour']}")
+    print(f"  구역: {decoded['spatial']['zone']}")
+    print(f"  객체: {decoded['visual']['objects']}")
+    print(f"  오디오 유무: {decoded['audio']['has_audio']}")
+    print(f"  자세 유무: {decoded['keypoints']['has_pose']}")
 
-    print("\n[5] Batch Encoding Test:")
+    print("\n[5] 배치 인코딩 테스트:")
     contexts = [test_context] * 5
     batch = encoder.encode_batch(contexts)
-    print(f"  Batch shape: {batch.shape}")
-    print(f"  All vectors identical: {np.allclose(batch[0], batch[1])}")
+    print(f"  배치 Shape: {batch.shape}")
+    print(f"  모든 벡터가 동일한가: {np.allclose(batch[0], batch[1])}")
 
     print("\n" + "=" * 70)
-    print("✓ FR2.3.3 Context Encoder Test Complete!")
+    print("컨텍스트 인코더 테스트 완료!")
     print("=" * 70)
 
 

@@ -1,6 +1,6 @@
 """
-FR2.3: Multimodal Context Fusion
-Combines GPS, YOLO, and Audio data into context vectors
+다중 모드 컨텍스트 융합 모듈
+다양한 센서 데이터를 결합하여 컨텍스트 벡터를 생성합니다.
 """
 
 from .context_vector import ContextVector

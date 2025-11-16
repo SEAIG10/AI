@@ -1,5 +1,6 @@
 """
-FR3 Training Script: Train GRU model on behavioral pattern data
+GRU 모델 학습 스크립트
+행동 패턴 데이터를 사용하여 GRU 모델을 학습합니다.
 """
 
 import os
@@ -7,7 +8,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Add src to path
+# src 경로 추가
 sys.path.append(os.path.dirname(__file__))
 
 from dataset.dataset_builder import DatasetBuilder
@@ -16,94 +17,93 @@ from model.gru_model import FedPerGRUModel
 
 def plot_training_history(history, save_path='training_history.png'):
     """
-    Plot training history
+    학습 기록을 시각화합니다.
 
     Args:
-        history: Keras training history
-        save_path: Path to save plot
+        history: Keras 학습 기록 객체
+        save_path: 그래프를 저장할 경로
     """
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-    # Loss
-    axes[0, 0].plot(history.history['loss'], label='Train Loss')
-    axes[0, 0].plot(history.history['val_loss'], label='Val Loss')
-    axes[0, 0].set_title('Model Loss')
-    axes[0, 0].set_xlabel('Epoch')
-    axes[0, 0].set_ylabel('Loss')
+    # 손실
+    axes[0, 0].plot(history.history['loss'], label='훈련 손실')
+    axes[0, 0].plot(history.history['val_loss'], label='검증 손실')
+    axes[0, 0].set_title('모델 손실')
+    axes[0, 0].set_xlabel('에포크')
+    axes[0, 0].set_ylabel('손실')
     axes[0, 0].legend()
     axes[0, 0].grid(True)
 
-    # Accuracy
-    axes[0, 1].plot(history.history['accuracy'], label='Train Accuracy')
-    axes[0, 1].plot(history.history['val_accuracy'], label='Val Accuracy')
-    axes[0, 1].set_title('Model Accuracy')
-    axes[0, 1].set_xlabel('Epoch')
-    axes[0, 1].set_ylabel('Accuracy')
+    # 정확도
+    axes[0, 1].plot(history.history['accuracy'], label='훈련 정확도')
+    axes[0, 1].plot(history.history['val_accuracy'], label='검증 정확도')
+    axes[0, 1].set_title('모델 정확도')
+    axes[0, 1].set_xlabel('에포크')
+    axes[0, 1].set_ylabel('정확도')
     axes[0, 1].legend()
     axes[0, 1].grid(True)
 
     # AUC
     if 'auc' in history.history:
-        axes[1, 0].plot(history.history['auc'], label='Train AUC')
-        axes[1, 0].plot(history.history['val_auc'], label='Val AUC')
-        axes[1, 0].set_title('Model AUC')
-        axes[1, 0].set_xlabel('Epoch')
+        axes[1, 0].plot(history.history['auc'], label='훈련 AUC')
+        axes[1, 0].plot(history.history['val_auc'], label='검증 AUC')
+        axes[1, 0].set_title('모델 AUC')
+        axes[1, 0].set_xlabel('에포크')
         axes[1, 0].set_ylabel('AUC')
         axes[1, 0].legend()
         axes[1, 0].grid(True)
 
-    # Precision
+    # 정밀도
     if 'precision' in history.history:
-        axes[1, 1].plot(history.history['precision'], label='Train Precision')
-        axes[1, 1].plot(history.history['val_precision'], label='Val Precision')
-        axes[1, 1].set_title('Model Precision')
-        axes[1, 1].set_xlabel('Epoch')
-        axes[1, 1].set_ylabel('Precision')
+        axes[1, 1].plot(history.history['precision'], label='훈련 정밀도')
+        axes[1, 1].plot(history.history['val_precision'], label='검증 정밀도')
+        axes[1, 1].set_title('모델 정밀도')
+        axes[1, 1].set_xlabel('에포크')
+        axes[1, 1].set_ylabel('정밀도')
         axes[1, 1].legend()
         axes[1, 1].grid(True)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    print(f"\n✓ Training history plot saved to: {save_path}")
+    print(f"\n학습 기록 그래프가 저장되었습니다: {save_path}")
 
 
 def main():
-    """Main training pipeline"""
+    """메인 학습 파이프라인"""
     print("\n" + "=" * 70)
-    print("FR3: GRU Model Training Pipeline")
+    print("GRU 모델 학습 파이프라인")
     print("=" * 70 + "\n")
 
-    # ===== Step 1: Build Dataset =====
-    print("[Step 1] Building dataset with AttentionContextEncoder (160-dim)...")
-    builder = DatasetBuilder(use_attention=True)  # Use 160-dim attention context
+    # ===== 단계 1: 데이터셋 구축 =====
+    print("[단계 1] AttentionContextEncoder(160차원)를 사용하여 데이터셋 구축 중...")
+    builder = DatasetBuilder(use_attention=True)  # 160차원 어텐션 컨텍스트 사용
 
-    # Generate dataset (주방/거실 위주 - 7개 시나리오)
-    # 7 scenarios × 143 samples = ~1000 total samples
+    # 데이터셋 생성 (7개 시나리오 × 143개 샘플 = 약 1000개 샘플)
     X_train, y_train, X_val, y_val = builder.build_dataset(
-        num_samples_per_scenario=143,  # 각 시나리오당 143개 (7×143 = 1001)
+        num_samples_per_scenario=143,
         noise_level=0.1,
         train_split=0.8
     )
 
-    # Save dataset for future use
-    print("\n[Step 1.1] Saving dataset...")
+    # 나중에 재사용을 위해 데이터셋 저장
+    print("\n[단계 1.1] 데이터셋 저장 중...")
     builder.save_dataset(X_train, y_train, X_val, y_val, "data/training_dataset.npz")
 
-    # ===== Step 2: Create Model =====
-    print("\n[Step 2] Creating GRU model with 160-dim context input...")
-    model = FedPerGRUModel(num_zones=7, context_dim=160)  # 160-dim attention context
+    # ===== 단계 2: 모델 생성 =====
+    print("\n[단계 2] 160차원 컨텍스트 입력을 받는 GRU 모델 생성 중...")
+    model = FedPerGRUModel(num_zones=7, context_dim=160)  # 160차원 어텐션 컨텍스트
     model.summary()
 
-    # ===== Step 3: Compile Model =====
-    print("\n[Step 3] Compiling model...")
+    # ===== 단계 3: 모델 컴파일 =====
+    print("\n[단계 3] 모델 컴파일 중...")
     model.compile_model(
         learning_rate=0.001,
         loss='binary_crossentropy',
         metrics=['accuracy', 'AUC', 'Precision', 'Recall']
     )
 
-    # ===== Step 4: Train Model =====
-    print("\n[Step 4] Training model...")
+    # ===== 단계 4: 모델 학습 =====
+    print("\n[단계 4] 모델 학습 중...")
     history = model.train(
         X_train, y_train,
         X_val, y_val,
@@ -112,42 +112,42 @@ def main():
         verbose=1
     )
 
-    # ===== Step 5: Evaluate Model =====
-    print("\n[Step 5] Evaluating model...")
+    # ===== 단계 5: 모델 평가 =====
+    print("\n[단계 5] 모델 평가 중...")
     zone_names = builder.generator.zones
     results = model.evaluate(X_val, y_val, zone_names=zone_names)
 
-    # ===== Step 6: Save Model =====
-    print("\n[Step 6] Saving model...")
+    # ===== 단계 6: 모델 저장 =====
+    print("\n[단계 6] 모델 저장 중...")
     os.makedirs("models/gru", exist_ok=True)
     model.save("models/gru/gru_model.keras")
 
-    # ===== Step 7: Plot Training History =====
-    print("\n[Step 7] Plotting training history...")
+    # ===== 단계 7: 학습 기록 시각화 =====
+    print("\n[단계 7] 학습 기록 시각화 중...")
     os.makedirs("results", exist_ok=True)
     plot_training_history(history, save_path="results/training_history.png")
 
-    # ===== Step 8: Test Prediction =====
-    print("\n[Step 8] Testing prediction on sample...")
+    # ===== 단계 8: 예측 테스트 =====
+    print("\n[단계 8] 샘플 데이터로 예측 테스트 중...")
     sample_idx = 0
     X_sample = X_val[sample_idx:sample_idx+1]
     y_true = y_val[sample_idx]
     y_pred = model.predict(X_sample)[0]
 
-    print(f"\nSample Prediction:")
-    print(f"{'Zone':<15} {'True Label':<12} {'Predicted':<12} {'Match'}")
+    print(f"\n샘플 예측 결과:")
+    print(f"{'구역':<15} {'실제 레이블':<12} {'예측 확률':<12} {'일치'}")
     print("-" * 55)
     for i, zone in enumerate(zone_names):
-        match = "✓" if (y_true[i] > 0.5) == (y_pred[i] > 0.5) else "✗"
+        match = "O" if (y_true[i] > 0.5) == (y_pred[i] > 0.5) else "X"
         print(f"{zone:<15} {y_true[i]:<12.0f} {y_pred[i]:<12.3f} {match}")
 
     print("\n" + "=" * 70)
-    print("✓ Training Pipeline Complete!")
+    print("학습 파이프라인 완료!")
     print("=" * 70)
-    print("\nSaved files:")
-    print("  - data/training_dataset.npz (dataset)")
-    print("  - models/gru/gru_model.keras (trained model)")
-    print("  - results/training_history.png (plots)")
+    print("\n저장된 파일:")
+    print("  - data/training_dataset.npz (데이터셋)")
+    print("  - models/gru/gru_model.keras (학습된 모델)")
+    print("  - results/training_history.png (학습 그래프)")
 
 
 if __name__ == "__main__":

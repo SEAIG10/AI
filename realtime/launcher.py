@@ -1,6 +1,6 @@
 """
-Realtime Demo - Launcher
-모든 센서와 예측기를 한 번에 실행하는 통합 스크립트
+실시간 데모 - 런처
+모든 센서와 예측기를 한 번에 실행하는 통합 스크립트입니다.
 """
 
 import subprocess
@@ -15,11 +15,11 @@ processes = []
 
 def start_process(script_name, args=None):
     """
-    센서 프로세스 시작
+    지정된 파이썬 스크립트를 별도의 프로세스로 시작합니다.
 
     Args:
-        script_name: Python 스크립트 이름
-        args: 추가 인자
+        script_name: 실행할 파이썬 스크립트 이름
+        args: 스크립트에 전달할 추가 인자 리스트
     """
     realtime_dir = os.path.dirname(__file__)
     script_path = os.path.join(realtime_dir, script_name)
@@ -36,11 +36,11 @@ def start_process(script_name, args=None):
 
 
 def cleanup():
-    """모든 프로세스 종료"""
-    print("\n🧹 Cleaning up processes...")
+    """실행 중인 모든 자식 프로세스를 종료합니다."""
+    print("\nCleaning up processes...")
 
     for name, process in processes:
-        if process.poll() is None:  # Still running
+        if process.poll() is None:  # 프로세스가 아직 실행 중인 경우
             print(f"  Terminating: {name}")
             process.terminate()
             try:
@@ -49,12 +49,12 @@ def cleanup():
                 print(f"  Force killing: {name}")
                 process.kill()
 
-    print("✓ All processes stopped!")
+    print("All processes stopped!")
 
 
 def signal_handler(sig, frame):
-    """Ctrl+C 핸들러"""
-    print("\n⚠ Received interrupt signal...")
+    """Ctrl+C 인터럽트 신호를 처리하는 핸들러입니다."""
+    print("\nReceived interrupt signal...")
     cleanup()
     sys.exit(0)
 
@@ -62,7 +62,7 @@ def signal_handler(sig, frame):
 def main():
     """메인 실행 함수"""
     print("="*60)
-    print("🚀 Smart Vacuum Cleaner - Realtime Demo Launcher")
+    print("Smart Vacuum Cleaner - Realtime Demo Launcher")
     print("="*60)
     print("\nThis script will start 4 processes:")
     print("  1. Visual Sensor (YOLO)")
@@ -80,7 +80,7 @@ def main():
     input("Press ENTER to start...")
 
     try:
-        # 1. GRU Predictor 먼저 시작 (ZeroMQ BIND - subscriber must bind first)
+        # 1. GRU 예측기를 먼저 시작합니다 (ZeroMQ BIND - 구독자가 먼저 바인드해야 함).
         print("\n[1/4] Starting GRU Predictor...")
         start_process("gru_predictor.py")
         time.sleep(3)  # 모델 로딩 및 ZeroMQ BIND 대기
@@ -92,31 +92,30 @@ def main():
 
         # 3. Audio Sensor
         print("\n[3/4] Starting Audio Sensor (YAMNet)...")
-        start_process("sensor_audio.py", ["--interval", "1.0", "--duration", "1.0"])
+        start_process("sensor_audio.py", ["--interval", "1.0", "--duration", "0.975"])
         time.sleep(2)
 
         # 4. Context Sensor
         print("\n[4/4] Starting Context Sensor...")
-        zone = input("Enter initial zone (default: living_room): ").strip()
-        if not zone:
-            zone = "living_room"
+        zone = "living_room"  # 기본값 자동 설정
+        print(f"Using default zone: {zone}")
         start_process("sensor_context.py", ["--interval", "1.0", "--zone", zone])
 
         print("\n" + "="*60)
-        print("✅ All processes started successfully!")
+        print("All processes started successfully!")
         print("="*60)
-        print("\n🎥 Collecting 30 timesteps of sensor data...")
-        print("🧠 GRU prediction will run automatically after 30 timesteps.\n")
+        print("\nCollecting 30 timesteps of sensor data...")
+        print("GRU prediction will run automatically after 30 timesteps.\n")
         print("Press Ctrl+C to stop all processes.\n")
 
         # 프로세스 모니터링
         while True:
             time.sleep(1)
 
-            # 프로세스가 비정상 종료되었는지 확인
+            # 프로세스가 비정상적으로 종료되었는지 확인
             for name, process in processes:
                 if process.poll() is not None:
-                    print(f"\n⚠ Warning: {name} stopped unexpectedly!")
+                    print(f"\nWarning: {name} stopped unexpectedly!")
                     cleanup()
                     sys.exit(1)
 
