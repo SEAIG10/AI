@@ -14,6 +14,10 @@ import time
 import numpy as np
 from datetime import datetime
 from realtime.utils import zone_to_onehot, get_time_features, ZONES
+import asyncio
+import websockets
+import json
+import threading
 
 # ZeroMQ 설정
 ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
@@ -25,12 +29,14 @@ class ContextSensor:
     공간, 시간, 자세 정보를 생성하여 ZeroMQ로 전송합니다.
     """
 
-    def __init__(self, default_zone="living_room"):
+    def __init__(self, default_zone="living_room", enable_location_tracker=False, tracker_ws_uri=None):
         """
         컨텍스트 센서를 초기화합니다.
 
         Args:
             default_zone: 기본 Zone (GPS 부재 시 수동으로 입력)
+            enable_location_tracker: LocationTracker WebSocket 사용 여부
+            tracker_ws_uri: LocationTracker 서버 주소 (예: ws://192.168.43.1:8080)
         """
         print("="*60)
         print("Context Sensor (Spatial/Time/Pose) Initializing...")
@@ -46,7 +52,51 @@ class ContextSensor:
         self.current_zone = default_zone
         print(f"Default zone set to: {self.current_zone}")
 
+        # LocationTracker WebSocket 설정
+        self.enable_location_tracker = enable_location_tracker
+        self.tracker_ws_uri = tracker_ws_uri or "ws://192.168.43.1:8080"
+
+        if self.enable_location_tracker:
+            print(f"\n[LocationTracker] Enabled")
+            print(f"[LocationTracker] Connecting to: {self.tracker_ws_uri}")
+            # 백그라운드 스레드로 WebSocket 리스너 시작
+            self.ws_thread = threading.Thread(target=self._start_ws_listener, daemon=True)
+            self.ws_thread.start()
+        else:
+            print(f"\n[LocationTracker] Disabled (manual zone control)")
+
         print("\nContext Sensor ready!\n")
+
+    def _start_ws_listener(self):
+        """백그라운드에서 WebSocket 리스너 실행"""
+        asyncio.run(self._listen_zone_updates())
+
+    async def _listen_zone_updates(self):
+        """LocationTracker로부터 zone 업데이트 수신"""
+        try:
+            async with websockets.connect(self.tracker_ws_uri) as ws:
+                # viewer로 식별
+                await ws.send(json.dumps({
+                    'type': 'identify',
+                    'clientType': 'viewer'
+                }))
+
+                print(f"[LocationTracker] Connected successfully")
+
+                while True:
+                    data = await ws.recv()
+                    message = json.loads(data)
+
+                    if message['type'] == 'location_update':
+                        new_zone = message['data'].get('zone', 'unknown')
+
+                        if new_zone != self.current_zone and new_zone != 'unknown':
+                            print(f"\n[LocationTracker] Zone update: {self.current_zone} -> {new_zone}\n")
+                            self.current_zone = new_zone
+
+        except Exception as e:
+            print(f"[LocationTracker] Connection failed: {e}")
+            print(f"[LocationTracker] Using default zone: {self.current_zone}")
 
     def set_zone(self, zone_name):
         """
@@ -157,9 +207,17 @@ if __name__ == "__main__":
     parser.add_argument("--zone", type=str, default="living_room",
                         choices=ZONES,
                         help=f"Initial zone (default: living_room)")
+    parser.add_argument("--enable-tracker", action="store_true",
+                        help="Enable LocationTracker WebSocket integration")
+    parser.add_argument("--tracker-uri", type=str, default="ws://192.168.43.1:8080",
+                        help="LocationTracker WebSocket URI (default: ws://192.168.43.1:8080)")
 
     args = parser.parse_args()
 
     # 센서 시작
-    sensor = ContextSensor(default_zone=args.zone)
+    sensor = ContextSensor(
+        default_zone=args.zone,
+        enable_location_tracker=args.enable_tracker,
+        tracker_ws_uri=args.tracker_uri
+    )
     sensor.run(interval=args.interval)
