@@ -2,6 +2,8 @@
 
 FedPer 기반 개인화 로봇 청소 시스템 (Webots 시뮬레이션)
 
+https://four-starflower-749.notion.site/LOCUS-AI-Driven-Household-Context-Awareness-for-Predictive-Cleaning-2b139484d2c0806592aaf4e31005259c?source=copy_link
+
 ## Project Structure
 
 ```
@@ -63,3 +65,13 @@ python src/train_gru.py
 - YOLOv8 (Object detection)
 - Yamnet (Audio recognition)
 - SQLite (Context database)
+
+## 👥 Group Members
+
+| Name          | Organization                                  | Email                   |
+|---------------|------------------------------------------------|-------------------------|
+| Hanyeong Go  | Department of Information Systems, Hanyang University | lilla9907@hanyang.ac.kr   |
+| Junhyung Kim   | Department of Information Systems, Hanyang University | combe4259@hanyang.ac.kr |
+| Dayeon Lee | Department of Sports Science, Hanyang University | ldy21@hanyang.ac.kr  |
+| Seunghwan Lee  | Department of Information Systems, Hanyang University | shlee5820@hanyang.ac.kr |
+
