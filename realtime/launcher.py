@@ -61,6 +61,15 @@ def signal_handler(sig, frame):
 
 def main():
     """메인 실행 함수"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Smart Vacuum Cleaner - Realtime Demo Launcher")
+    parser.add_argument("--enable-tracker", action="store_true",
+                        help="Enable LocationTracker WebSocket integration")
+    parser.add_argument("--tracker-uri", type=str, default="ws://192.168.43.1:8080",
+                        help="LocationTracker WebSocket URI (default: ws://192.168.43.1:8080)")
+    args = parser.parse_args()
+
     print("="*60)
     print("Smart Vacuum Cleaner - Realtime Demo Launcher")
     print("="*60)
@@ -72,6 +81,14 @@ def main():
     print("\nProcesses communicate via ZeroMQ (IPC):")
     print("  - Endpoint: ipc:///tmp/locus_sensors.ipc")
     print("  - Pattern: PUB/SUB (sensors publish, predictor subscribes)")
+
+    if args.enable_tracker:
+        print("\n[LocationTracker] Enabled")
+        print(f"  - URI: {args.tracker_uri}")
+        print("  - Zone will update automatically from iPhone ARKit")
+    else:
+        print("\n[LocationTracker] Disabled (manual zone control)")
+
     print("\nPress Ctrl+C to stop all processes.\n")
 
     # Ctrl+C 핸들러 등록
@@ -98,8 +115,15 @@ def main():
         # 4. Context Sensor
         print("\n[4/4] Starting Context Sensor...")
         zone = "living_room"  # 기본값 자동 설정
-        print(f"Using default zone: {zone}")
-        start_process("sensor_context.py", ["--interval", "1.0", "--zone", zone])
+        context_args = ["--interval", "1.0", "--zone", zone]
+
+        if args.enable_tracker:
+            context_args.extend(["--enable-tracker", "--tracker-uri", args.tracker_uri])
+            print(f"LocationTracker enabled: {args.tracker_uri}")
+        else:
+            print(f"Using default zone: {zone}")
+
+        start_process("sensor_context.py", context_args)
 
         print("\n" + "="*60)
         print("All processes started successfully!")
