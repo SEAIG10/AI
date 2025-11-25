@@ -6,13 +6,10 @@
 import numpy as np
 from datetime import datetime
 
-# Zone 정의
+# Zone 정의 (4개 구역)
 ZONES = [
     "bathroom",
-    "bedroom_1",
-    "bedroom_2",
-    "corridor",
-    "garden_balcony",
+    "bedroom",
     "kitchen",
     "living_room"
 ]
@@ -44,9 +41,9 @@ def zone_to_onehot(zone_name: str) -> np.ndarray:
         zone_name: Zone 이름 (예: "kitchen")
 
     Returns:
-        (7,) 크기의 원-핫 벡터
+        (4,) 크기의 원-핫 벡터
     """
-    vector = np.zeros(7, dtype=np.float32)
+    vector = np.zeros(4, dtype=np.float32)
     if zone_name in ZONES:
         idx = ZONES.index(zone_name)
         vector[idx] = 1.0
@@ -151,7 +148,7 @@ def print_prediction_result(prediction: np.ndarray, zones: list = None):
     GRU 예측 결과를 형식에 맞게 출력합니다.
 
     Args:
-        prediction: (7,) 크기의 예측 확률 배열
+        prediction: (4,) 크기의 예측 확률 배열
         zones: Zone 이름 리스트
     """
     if zones is None:
@@ -189,7 +186,7 @@ if __name__ == "__main__":
     print(f"Time vector: {time_vec}")
 
     # print_prediction_result 테스트
-    mock_prediction = np.array([0.1, 0.05, 0.03, 0.02, 0.01, 0.85, 0.12])
+    mock_prediction = np.array([0.1, 0.05, 0.85, 0.12])  # 4 zones
     print_prediction_result(mock_prediction)
 
     print("\nAll utils tested successfully!")

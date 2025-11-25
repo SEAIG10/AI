@@ -7,7 +7,7 @@ import sys
 import os
 
 # 프로젝트 루트 경로 추가
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import zmq
 import time
@@ -123,9 +123,15 @@ class ContextSensor:
         print(f"  - Interval: {interval}s")
         print(f"  - Current zone: {self.current_zone}")
         print("  - Press Ctrl+C to quit")
-        print("\nCommands (type during running):")
-        print("  - Type zone name to change (e.g., 'kitchen', 'bedroom_1')")
-        print("  - Available zones:", ", ".join(ZONES))
+
+        if not self.enable_location_tracker:
+            print("\n[Manual Mode]")
+            print("  - Zone can be changed using set_zone() method")
+            print("  - Available zones:", ", ".join(ZONES))
+        else:
+            print("\n[LocationTracker Mode]")
+            print("  - Zone will update automatically from iPhone ARKit")
+
         print()
 
         sample_count = 0

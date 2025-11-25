@@ -18,8 +18,7 @@ class ScenarioGenerator:
 
     def __init__(self):
         """시나리오 생성기를 초기화합니다."""
-        self.zones = ["bathroom", "bedroom_1", "bedroom_2", "corridor",
-                      "garden_balcony", "kitchen", "living_room"]
+        self.zones = ["bathroom", "bedroom", "kitchen", "living_room"]
 
     def generate_all_scenarios(self) -> List[Dict]:
         """
@@ -89,7 +88,7 @@ class ScenarioGenerator:
         return {
             "name": "저녁 식사 중 바닥 부스러기",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 0, 1]  # 15분 후 living_room 바닥 오염 예측
+            "label": [0, 0, 0, 1]  # 15분 후 living_room 바닥 오염 예측
         }
 
     def scenario_tv_snack_floor_mess(self) -> Dict:
@@ -140,7 +139,7 @@ class ScenarioGenerator:
         return {
             "name": "TV 시청 중 과자 섭취",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 0, 1]  # 15분 후 living_room 바닥 오염
+            "label": [0, 0, 0, 1]  # 15분 후 living_room 바닥 오염
         }
 
     def scenario_cooking_floor_spill(self) -> Dict:
@@ -176,7 +175,7 @@ class ScenarioGenerator:
         return {
             "name": "요리 중 주방 바닥 오염",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 1, 0]  # 15분 후 kitchen 바닥 오염
+            "label": [0, 0, 1, 0]  # 15분 후 kitchen 바닥 오염
         }
 
     def scenario_bedroom_sleeping_clean(self) -> Dict:
@@ -195,7 +194,7 @@ class ScenarioGenerator:
         for i in range(12):
             sequence.append({
                 "timestamp": (base_time + timedelta(minutes=i*2.5)).timestamp(),
-                "zone_id": "bedroom_1",
+                "zone_id": "bedroom",
                 "visual_events": [
                     {"class": "person", "confidence": 0.88},
                     {"class": "bed", "confidence": 0.95}
@@ -209,7 +208,7 @@ class ScenarioGenerator:
         return {
             "name": "침실에서 취침",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 0, 0]  # 오염 없음
+            "label": [0, 0, 0, 0]  # 오염 없음
         }
 
     def scenario_work_from_home_clean(self) -> Dict:
@@ -228,7 +227,7 @@ class ScenarioGenerator:
         for i in range(12):
             sequence.append({
                 "timestamp": (base_time + timedelta(minutes=i*2.5)).timestamp(),
-                "zone_id": "bedroom_2",
+                "zone_id": "bedroom",
                 "visual_events": [
                     {"class": "person", "confidence": 0.91},
                     {"class": "chair", "confidence": 0.90},
@@ -244,7 +243,7 @@ class ScenarioGenerator:
         return {
             "name": "재택근무 중",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 0, 0]  # 오염 없음
+            "label": [0, 0, 0, 0]  # 오염 없음
         }
 
     def scenario_late_night_ramen_spill(self) -> Dict:
@@ -293,7 +292,7 @@ class ScenarioGenerator:
         return {
             "name": "야식 라면 섭취",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 1, 0]  # 15분 후 kitchen 바닥 오염
+            "label": [0, 0, 1, 0]  # 15분 후 kitchen 바닥 오염
         }
 
     def scenario_living_drink_spill(self) -> Dict:
@@ -329,7 +328,7 @@ class ScenarioGenerator:
         return {
             "name": "거실 음료수 섭취",
             "sequence": sequence[:30],
-            "label": [0, 0, 0, 0, 0, 0, 1]  # 15분 후 living_room 바닥 오염
+            "label": [0, 0, 0, 1]  # 15분 후 living_room 바닥 오염
         }
 
     def add_noise(self, scenario: Dict, noise_level: float = 0.1) -> Dict:

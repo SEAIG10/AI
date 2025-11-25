@@ -154,10 +154,9 @@ class RVCRobot:
         self.last_prediction = None  # Store last prediction result
         print(f"Context buffer initialized (size: 30 timesteps)")
 
-        # Zone names for prediction output
+        # Zone names for prediction output (4 zones)
         self.zone_names = [
-            "bathroom", "bedroom_1", "bedroom_2", "corridor",
-            "garden_balcony", "kitchen", "living_room"
+            "bathroom", "bedroom", "kitchen", "living_room"
         ]
 
         print("RVC Robot initialized successfully!")

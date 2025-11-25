@@ -16,17 +16,30 @@
   },
   "zones": [
     {
-      "id": "living_room",
-      "label": "거실 (Living Room)",
+      "id": "bathroom",
+      "label": "욕실 (Bathroom)",
       "type": "polygon",
       "coordinates_world": [
-        [-9.5, -4.5],
-        [-3.5, -4.5],
-        [-3.5, 0.5],
-        [-9.5, 0.5]
+        [-5.5, -7.5],
+        [-3.5, -7.5],
+        [-3.5, -2.0],
+        [-5.5, -2.0]
       ],
-      "description": "Main living room area (LIVING_ROOM_1 + LIVING_ROOM_2)",
-      "color": [200, 255, 200]
+      "description": "Bathroom area",
+      "color": [200, 240, 255]
+    },
+    {
+      "id": "bedroom",
+      "label": "침실 (Bedroom)",
+      "type": "polygon",
+      "coordinates_world": [
+        [-9.0, -12.0],
+        [1.5, -12.0],
+        [1.5, -7.5],
+        [-9.0, -7.5]
+      ],
+      "description": "Combined bedroom area (ROOM_1 + ROOM_2)",
+      "color": [255, 220, 220]
     },
     {
       "id": "kitchen",
@@ -42,69 +55,17 @@
       "color": [255, 200, 150]
     },
     {
-      "id": "corridor",
-      "label": "복도 (Corridor)",
+      "id": "living_room",
+      "label": "거실 (Living Room)",
       "type": "polygon",
       "coordinates_world": [
-        [-5.9, -11.5],
-        [-3.7, -11.5],
-        [-3.7, -2.0],
-        [-5.9, -2.0]
+        [-9.5, -4.5],
+        [-3.5, -4.5],
+        [-3.5, 0.5],
+        [-9.5, 0.5]
       ],
-      "description": "Main corridor connecting rooms",
-      "color": [220, 220, 220]
-    },
-    {
-      "id": "bedroom_1",
-      "label": "침실1 (Bedroom 1)",
-      "type": "polygon",
-      "coordinates_world": [
-        [-9.0, -12.0],
-        [-5.0, -12.0],
-        [-5.0, -7.5],
-        [-9.0, -7.5]
-      ],
-      "description": "First bedroom (ROOM_1)",
-      "color": [255, 220, 220]
-    },
-    {
-      "id": "bedroom_2",
-      "label": "침실2 (Bedroom 2)",
-      "type": "polygon",
-      "coordinates_world": [
-        [-3.5, -12.0],
-        [1.5, -12.0],
-        [1.5, -7.5],
-        [-3.5, -7.5]
-      ],
-      "description": "Second bedroom (ROOM_2)",
-      "color": [220, 220, 255]
-    },
-    {
-      "id": "bathroom",
-      "label": "욕실 (Bathroom)",
-      "type": "polygon",
-      "coordinates_world": [
-        [-5.5, -7.5],
-        [-3.5, -7.5],
-        [-3.5, -2.0],
-        [-5.5, -2.0]
-      ],
-      "description": "Bathroom area",
-      "color": [200, 240, 255]
-    },
-    {
-      "id": "garden_balcony",
-      "label": "발코니 (Garden/Balcony)",
-      "type": "polygon",
-      "coordinates_world": [
-        [-11.5, -9.0],
-        [-9.5, -9.0],
-        [-9.5, -1.0],
-        [-11.5, -1.0]
-      ],
-      "description": "Outdoor balcony/garden area",
-      "color": [180, 255, 180]
+      "description": "Main living room area (LIVING_ROOM_1 + LIVING_ROOM_2)",
+      "color": [200, 255, 200]
     }
   ]
 }

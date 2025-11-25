@@ -61,14 +61,14 @@ class GRUPredictor:
             visual_dim=14,
             audio_dim=17,
             pose_dim=51,
-            spatial_dim=7,
+            spatial_dim=4,  # 4 zones: bathroom, bedroom, kitchen, living_room
             time_dim=10,
             context_dim=160
         )
         print("     AttentionContextEncoder loaded!")
 
         print(f"  2. GRU Model from {GRU_MODEL_PATH}...")
-        self.gru_model = FedPerGRUModel(num_zones=7, context_dim=160)
+        self.gru_model = FedPerGRUModel(num_zones=4, context_dim=160)  # 4 zones
         self.gru_model.load(GRU_MODEL_PATH)
         print("     GRU Model loaded!")
 

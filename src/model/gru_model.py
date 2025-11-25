@@ -32,38 +32,72 @@ class FedPerGRUModel:
         """
         self.num_zones = num_zones
         self.context_dim = context_dim
-        self.model = self._build_model()
+
+        # FedPer: Base와 Head를 분리하여 구축
         self.base_model = None  # FedPer용: 공유 기반 레이어
         self.head_model = None  # FedPer용: 개인화된 헤드 레이어
+        self.model = self._build_model()
 
-    def _build_model(self) -> keras.Model:
+    def _build_base_model(self) -> keras.Model:
         """
-        전체 GRU 모델을 구성합니다.
+        Base 모델을 구성합니다 (FedPer - 공유 레이어).
+
+        여러 클라이언트(집)에서 공유되는 공통 패턴 추출 레이어입니다.
 
         Returns:
-            컴파일된 Keras 모델
+            Base Model (입력: (batch, 30, 160) → 출력: (batch, 32))
         """
-        # 입력: 30 타임스텝의 어텐션 컨텍스트 벡터
         inputs = layers.Input(shape=(30, self.context_dim), name='context_sequence')
 
-        # ===== 기반 레이어 (공유 특징 추출) =====
-        # GRU 레이어 1: 64 유닛, 다음 GRU를 위해 시퀀스 반환
+        # GRU 레이어 1: 64 유닛, 시퀀스 반환
         x = layers.GRU(64, return_sequences=True, name='base_gru1')(inputs)
 
         # GRU 레이어 2: 32 유닛, 최종 표현
-        base_output = layers.GRU(32, return_sequences=False, name='base_gru2')(x)
+        outputs = layers.GRU(32, return_sequences=False, name='base_gru2')(x)
 
-        # ===== 헤드 레이어 (개인화된 예측) =====
-        # Dense 레이어 1: 16 유닛, ReLU 활성화 함수
-        x = layers.Dense(16, activation='relu', name='head_dense1')(base_output)
+        return keras.Model(inputs=inputs, outputs=outputs, name='base_model')
+
+    def _build_head_model(self) -> keras.Model:
+        """
+        Head 모델을 구성합니다 (FedPer - 개인화 레이어).
+
+        각 클라이언트(집)마다 개인화되는 예측 레이어입니다.
+
+        Returns:
+            Head Model (입력: (batch, 32) → 출력: (batch, 7))
+        """
+        inputs = layers.Input(shape=(32,), name='base_features')
+
+        # Dense 레이어: 16 유닛, ReLU 활성화
+        x = layers.Dense(16, activation='relu', name='head_dense1')(inputs)
 
         # 드롭아웃: 0.3 (과적합 방지)
         x = layers.Dropout(0.3, name='head_dropout')(x)
 
-        # 출력 레이어: 7개 구역, Sigmoid 활성화 함수 (다중 레이블 이진 분류)
+        # 출력 레이어: 7개 구역, Sigmoid 활성화
         outputs = layers.Dense(self.num_zones, activation='sigmoid', name='head_output')(x)
 
-        # 모델 구성
+        return keras.Model(inputs=inputs, outputs=outputs, name='head_model')
+
+    def _build_model(self) -> keras.Model:
+        """
+        전체 GRU 모델을 구성합니다 (Base + Head).
+
+        Returns:
+            Full Model (입력: (batch, 30, 160) → 출력: (batch, 7))
+        """
+        # Base 모델 생성
+        self.base_model = self._build_base_model()
+
+        # Head 모델 생성
+        self.head_model = self._build_head_model()
+
+        # Base + Head 연결
+        inputs = layers.Input(shape=(30, self.context_dim), name='context_sequence')
+        base_output = self.base_model(inputs)
+        outputs = self.head_model(base_output)
+
+        # 전체 모델
         model = keras.Model(inputs=inputs, outputs=outputs, name='FedPer_GRU')
 
         return model
@@ -101,6 +135,7 @@ class FedPerGRUModel:
         y_val: np.ndarray,
         epochs: int = 50,
         batch_size: int = 32,
+        callbacks: list = None,
         verbose: int = 1
     ) -> keras.callbacks.History:
         """
@@ -113,6 +148,7 @@ class FedPerGRUModel:
             y_val: 검증 레이블 (N, 7)
             epochs: 학습 에포크 수
             batch_size: 배치 크기
+            callbacks: Keras 콜백 리스트 (기본값: EarlyStopping, ReduceLROnPlateau)
             verbose: 상세 정보 출력 수준
 
         Returns:
@@ -126,22 +162,23 @@ class FedPerGRUModel:
         print(f"에포크: {epochs}, 배치 크기: {batch_size}")
         print()
 
-        # 콜백 설정
-        callbacks = [
-            keras.callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=10,
-                restore_best_weights=True,
-                verbose=1
-            ),
-            keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.5,
-                patience=5,
-                min_lr=1e-6,
-                verbose=1
-            )
-        ]
+        # 콜백 설정 (기본값 제공)
+        if callbacks is None:
+            callbacks = [
+                keras.callbacks.EarlyStopping(
+                    monitor='val_loss',
+                    patience=10,
+                    restore_best_weights=True,
+                    verbose=1
+                ),
+                keras.callbacks.ReduceLROnPlateau(
+                    monitor='val_loss',
+                    factor=0.5,
+                    patience=5,
+                    min_lr=1e-6,
+                    verbose=1
+                )
+            ]
 
         # 학습
         history = self.model.fit(
@@ -266,6 +303,80 @@ class FedPerGRUModel:
         print(f"  헤드 레이어:  {head_params:,} 파라미터 (~{head_params/1000:.1f}K)")
         print(f"  총합:       {total_params:,} 파라미터 (~{total_params/1000:.1f}K)")
         print("=" * 70)
+
+    # ==================== FedPer 동적 Head Layer 메서드 ====================
+
+    def create_custom_head(self, num_zones: int) -> keras.Model:
+        """
+        커스텀 구역 수를 가진 새로운 Head 모델을 생성합니다.
+
+        집마다 구역 수가 다를 때 사용합니다.
+        - 김씨 집: 4개 구역 → create_custom_head(4)
+        - 이씨 집: 7개 구역 → create_custom_head(7)
+
+        Args:
+            num_zones: 생성할 Head의 구역 수
+
+        Returns:
+            새로운 Head Model (입력: (batch, 32) → 출력: (batch, num_zones))
+
+        예시:
+            >>> model = FedPerGRUModel(num_zones=7)
+            >>> new_head = model.create_custom_head(num_zones=4)
+            >>> # 전체 모델에 적용하려면 replace_head() 사용
+        """
+        inputs = layers.Input(shape=(32,), name='base_features')
+
+        # Dense 레이어: 16 유닛, ReLU 활성화
+        x = layers.Dense(16, activation='relu', name='head_dense1')(inputs)
+
+        # 드롭아웃: 0.3 (과적합 방지)
+        x = layers.Dropout(0.3, name='head_dropout')(x)
+
+        # 출력 레이어: num_zones개 구역, Sigmoid 활성화
+        outputs = layers.Dense(num_zones, activation='sigmoid', name='head_output')(x)
+
+        return keras.Model(inputs=inputs, outputs=outputs, name=f'head_model_{num_zones}zones')
+
+    def replace_head(self, num_zones: int):
+        """
+        기존 Head를 새로운 구역 수를 가진 Head로 교체합니다.
+
+        집의 구조가 바뀌거나, 다른 집으로 이사할 때 사용합니다.
+        Base Layer는 그대로 유지되고, Head만 새로 초기화됩니다.
+
+        Args:
+            num_zones: 새로운 구역 수
+
+        주의:
+            - Base Layer는 그대로 유지됩니다 (가중치 보존)
+            - Head Layer는 새로 초기화됩니다 (재학습 필요)
+            - 모델 컴파일을 다시 해야 합니다
+
+        예시:
+            >>> model = FedPerGRUModel(num_zones=7)
+            >>> model.train(old_house_data)
+            >>>
+            >>> # 4개 구역으로 변경
+            >>> model.replace_head(num_zones=4)
+            >>> model.compile_model()  # 재컴파일 필수!
+            >>> model.train(new_house_data)
+        """
+        # 1. 기존 num_zones 업데이트
+        self.num_zones = num_zones
+
+        # 2. 새로운 Head 생성
+        self.head_model = self.create_custom_head(num_zones)
+
+        # 3. 전체 모델 재구성 (Base + 새 Head)
+        inputs = layers.Input(shape=(30, self.context_dim), name='context_sequence')
+        base_output = self.base_model(inputs)  # Base는 그대로
+        outputs = self.head_model(base_output)  # 새 Head 연결
+
+        self.model = keras.Model(inputs=inputs, outputs=outputs, name='FedPer_GRU')
+
+        print(f"Head가 {num_zones}개 구역으로 교체되었습니다.")
+        print("주의: 모델을 다시 컴파일해야 합니다 (compile_model() 호출)")
 
 
 def test_gru_model():

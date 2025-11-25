@@ -10,29 +10,26 @@ from typing import Dict, List, Optional
 
 class ContextEncoder:
     """
-    JSON 형식의 컨텍스트 벡터를 고정된 338차원의 수치 벡터로 인코딩합니다.
+    JSON 형식의 컨텍스트 벡터를 고정된 335차원의 수치 벡터로 인코딩합니다.
 
     벡터 구성:
     - 시간 특징: 10차원
-    - 공간 특징: 7차원 (구역 원-핫 인코딩)
+    - 공간 특징: 4차원 (구역 원-핫 인코딩)
     - 시각 특징: 14차원 (사용자 정의 YOLO 14개 클래스, 멀티-핫 인코딩)
     - 오디오 특징: 256차원 (YAMNet-256 임베딩)
     - 키포인트 특징: 51차원 (정규화된 원본 자세 정보)
-    총: 338차원
+    총: 335차원 (기존 338 → 4개 구역으로 변경)
     """
 
     def __init__(self):
         """특징 매핑과 함께 인코더를 초기화합니다."""
 
-        # 7개의 의미론적 공간 (일관성을 위해 알파벳 순서로 정렬)
+        # 4개의 의미론적 공간 (일관성을 위해 알파벳 순서로 정렬)
         self.zone_labels = [
             "bathroom",      # 0
-            "bedroom_1",     # 1
-            "bedroom_2",     # 2
-            "corridor",      # 3
-            "garden_balcony",# 4
-            "kitchen",       # 5
-            "living_room"    # 6
+            "bedroom",       # 1
+            "kitchen",       # 2
+            "living_room"    # 3
         ]
         self.zone_to_idx = {zone: idx for idx, zone in enumerate(self.zone_labels)}
 
@@ -60,20 +57,20 @@ class ContextEncoder:
 
     def encode(self, context: Dict) -> np.ndarray:
         """
-        JSON 컨텍스트 벡터를 338차원의 수치 벡터로 인코딩합니다.
+        JSON 컨텍스트 벡터를 335차원의 수치 벡터로 인코딩합니다.
 
         Args:
             context: ContextVector.create_context()로부터 생성된 JSON 컨텍스트 딕셔너리
 
         Returns:
-            338차원 numpy 배열 [시간(10) + 공간(7) + 시각(14) + 오디오(256) + 키포인트(51)]
+            335차원 numpy 배열 [시간(10) + 공간(4) + 시각(14) + 오디오(256) + 키포인트(51)]
         """
         # 타임스탬프 추출
         timestamp = context.get("timestamp", 0)
 
         # 각 구성 요소 인코딩
         time_features = self._encode_time(timestamp)        # 10차원
-        spatial_features = self._encode_spatial(context)    # 7차원
+        spatial_features = self._encode_spatial(context)    # 4차원
         visual_features = self._encode_visual(context)      # 14차원 (사용자 정의 YOLO)
         audio_features = self._encode_audio(context)        # 256차원 (YAMNet-256 임베딩)
         keypoints_features = self._encode_keypoints(context)  # 51차원
@@ -87,7 +84,7 @@ class ContextEncoder:
             keypoints_features
         ])
 
-        assert vector.shape == (338,), f"Expected shape (338,), got {vector.shape}"
+        assert vector.shape == (335,), f"Expected shape (335,), got {vector.shape}"
         return vector.astype(np.float32)
 
     def _encode_time(self, timestamp: float) -> np.ndarray:
@@ -132,15 +129,15 @@ class ContextEncoder:
 
     def _encode_spatial(self, context: Dict) -> np.ndarray:
         """
-        공간 특징을 7차원 벡터로 인코딩합니다 (zone_id의 원-핫 인코딩).
+        공간 특징을 4차원 벡터로 인코딩합니다 (zone_id의 원-핫 인코딩).
 
         Returns:
-            7차원 원-핫 벡터
+            4차원 원-핫 벡터
         """
         zone_id = context.get("zone_id", "unknown")
 
         # 원-핫 인코딩
-        vector = np.zeros(7, dtype=np.float32)
+        vector = np.zeros(4, dtype=np.float32)
         if zone_id in self.zone_to_idx:
             vector[self.zone_to_idx[zone_id]] = 1.0
 
@@ -225,7 +222,7 @@ class ContextEncoder:
             contexts: JSON 컨텍스트 딕셔너리 리스트
 
         Returns:
-            (N, 338) 크기의 numpy 배열
+            (N, 335) 크기의 numpy 배열
         """
         return np.array([self.encode(ctx) for ctx in contexts], dtype=np.float32)
 
@@ -234,7 +231,7 @@ class ContextEncoder:
         디버깅을 위해 사람이 읽을 수 있는 특징 이름을 가져옵니다.
 
         Returns:
-            338개 특징 이름의 리스트
+            335개 특징 이름의 리스트
         """
         names = []
 
@@ -246,7 +243,7 @@ class ContextEncoder:
             "hour_norm", "dow_norm", "month_norm"
         ])
 
-        # 공간 특징 (7)
+        # 공간 특징 (4)
         names.extend([f"zone_{zone}" for zone in self.zone_labels])
 
         # 시각 특징 (14) - 사용자 정의 YOLO
@@ -272,7 +269,7 @@ class ContextEncoder:
         수치 벡터를 디버깅을 위해 사람이 읽을 수 있는 형식으로 다시 변환합니다.
 
         Args:
-            vector: 338차원 numpy 배열
+            vector: 335차원 numpy 배열
 
         Returns:
             디코딩된 특징을 담은 딕셔너리
@@ -289,23 +286,23 @@ class ContextEncoder:
             "is_work_time": bool(vector[6] > 0.5)
         }
 
-        # 공간 특징 (10-16)
-        zone_vector = vector[10:17]
+        # 공간 특징 (10-13)
+        zone_vector = vector[10:14]
         zone_idx = np.argmax(zone_vector) if np.max(zone_vector) > 0 else None
         spatial_features = {
             "zone": self.zone_labels[zone_idx] if zone_idx is not None else "unknown"
         }
 
-        # 시각 특징 (17-30)
-        visual_vector = vector[17:31]
+        # 시각 특징 (14-27)
+        visual_vector = vector[14:28]
         detected_objects = [self.visual_classes[i] for i, v in enumerate(visual_vector) if v > 0.5]
         visual_features = {
             "objects": detected_objects,
             "count": len(detected_objects)
         }
 
-        # 오디오 특징 (31-286)
-        audio_embedding = vector[31:287]
+        # 오디오 특징 (28-283)
+        audio_embedding = vector[28:284]
         has_audio = np.any(audio_embedding != 0)
         audio_features = {
             "has_audio": has_audio,
@@ -314,8 +311,8 @@ class ContextEncoder:
             "embedding_shape": "(256,)"
         }
 
-        # 키포인트 특징 (287-337)
-        keypoints_vector = vector[287:338]
+        # 키포인트 특징 (284-334)
+        keypoints_vector = vector[284:335]
         has_pose = np.any(keypoints_vector != 0)
         keypoints_features = {
             "has_pose": has_pose,
