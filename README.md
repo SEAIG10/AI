@@ -70,7 +70,7 @@ python src/train_gru.py
 
 | Name          | Organization                                  | Email                   |
 |---------------|------------------------------------------------|-------------------------|
-| Hanyeong Go  | Department of Information Systems, Hanyang University | lilla9907@hanyang.ac.kr   |
+| Hanyeong Ko  | Department of Information Systems, Hanyang University | lilla9907@hanyang.ac.kr   |
 | Junhyung Kim   | Department of Information Systems, Hanyang University | combe4259@hanyang.ac.kr |
 | Dayeon Lee | Department of Sports Science, Hanyang University | ldy21@hanyang.ac.kr  |
 | Seunghwan Lee  | Department of Information Systems, Hanyang University | shlee5820@hanyang.ac.kr |
