@@ -61,7 +61,7 @@ class GRUPredictor:
             visual_dim=14,
             audio_dim=17,
             pose_dim=51,
-            spatial_dim=4,  # 4 zones: bathroom, bedroom, kitchen, living_room
+            spatial_dim=4,  # 4 zones: balcony, bedroom, kitchen, living_room
             time_dim=10,
             context_dim=160
         )

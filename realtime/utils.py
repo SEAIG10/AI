@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Zone 정의 (4개 구역)
 ZONES = [
-    "bathroom",
+    "balcony",
     "bedroom",
     "kitchen",
     "living_room"

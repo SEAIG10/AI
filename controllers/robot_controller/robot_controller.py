@@ -156,7 +156,7 @@ class RVCRobot:
 
         # Zone names for prediction output (4 zones)
         self.zone_names = [
-            "bathroom", "bedroom", "kitchen", "living_room"
+            "balcony", "bedroom", "kitchen", "living_room"
         ]
 
         print("RVC Robot initialized successfully!")

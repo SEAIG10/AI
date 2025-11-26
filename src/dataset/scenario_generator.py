@@ -18,7 +18,7 @@ class ScenarioGenerator:
 
     def __init__(self):
         """시나리오 생성기를 초기화합니다."""
-        self.zones = ["bathroom", "bedroom", "kitchen", "living_room"]
+        self.zones = ["balcony", "bedroom", "kitchen", "living_room"]
 
     def generate_all_scenarios(self) -> List[Dict]:
         """

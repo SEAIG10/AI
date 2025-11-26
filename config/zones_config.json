@@ -16,8 +16,8 @@
   },
   "zones": [
     {
-      "id": "bathroom",
-      "label": "욕실 (Bathroom)",
+      "id": "balcony",
+      "label": "베란다 (Balcony)",
       "type": "polygon",
       "coordinates_world": [
         [-5.5, -7.5],
@@ -25,7 +25,7 @@
         [-3.5, -2.0],
         [-5.5, -2.0]
       ],
-      "description": "Bathroom area",
+      "description": "Balcony area",
       "color": [200, 240, 255]
     },
     {

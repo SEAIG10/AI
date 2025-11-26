@@ -14,7 +14,7 @@ SENSOR_DIMS = {
     'visual': 14,      # YOLO 클래스 수 (확장 가능: 15, 20, 80 등)
     'audio': 17,       # YAMNet 17-class
     'pose': 51,        # 17 관절 × 3 좌표
-    'spatial': 4,      # GPS 구역 수 (bathroom, bedroom, kitchen, living_room)
+    'spatial': 4,      # GPS 구역 수 (balcony, bedroom, kitchen, living_room)
     'time': 10         # 시간 특징 차원
 }
 
@@ -27,7 +27,7 @@ ENCODER_CONFIG = {
 
 # ========== GRU 모델 설정 ==========
 GRU_CONFIG = {
-    'num_zones': 4,         # 예측할 구역 수 (bathroom, bedroom, kitchen, living_room)
+    'num_zones': 4,         # 예측할 구역 수 (balcony, bedroom, kitchen, living_room)
     'context_dim': 160,     # AttentionEncoder 출력 차원과 일치해야 함
     'sequence_length': 30,  # 시퀀스 길이 (30 타임스텝)
 }

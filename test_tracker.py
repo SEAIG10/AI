@@ -37,7 +37,7 @@ async def test_zone_updates():
                 {"x": 0.0, "y": 0.0, "z": 0.0, "zone": "living_room"},
                 {"x": 1.5, "y": 0.0, "z": 1.0, "zone": "kitchen"},
                 {"x": -1.0, "y": 0.0, "z": 2.0, "zone": "bedroom"},
-                {"x": 0.5, "y": 0.0, "z": -1.0, "zone": "bathroom"},
+                {"x": 0.5, "y": 0.0, "z": -1.0, "zone": "balcony"},
             ]
 
             for i, test in enumerate(test_cases, 1):

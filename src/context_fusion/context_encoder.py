@@ -26,7 +26,7 @@ class ContextEncoder:
 
         # 4개의 의미론적 공간 (일관성을 위해 알파벳 순서로 정렬)
         self.zone_labels = [
-            "bathroom",      # 0
+            "balcony",       # 0
             "bedroom",       # 1
             "kitchen",       # 2
             "living_room"    # 3
