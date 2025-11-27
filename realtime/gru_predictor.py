@@ -19,6 +19,7 @@ from collections import deque, defaultdict
 from src.context_fusion.attention_context_encoder import create_attention_encoder
 from src.model.gru_model import FedPerGRUModel
 from realtime.utils import print_prediction_result, ZONES
+from realtime.cleaning_executor import CleaningExecutor
 
 # ZeroMQ 설정
 ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
@@ -40,8 +41,14 @@ class GRUPredictor:
     ZeroMQ로 센서 데이터를 수신하여 AttentionContextEncoder를 거친 후, GRU 모델로 예측을 수행합니다.
     """
 
-    def __init__(self):
-        """GRU 예측기를 초기화합니다."""
+    def __init__(self, enable_cleaning: bool = True, backend_url: str = "http://localhost:4000"):
+        """
+        GRU 예측기를 초기화합니다.
+
+        Args:
+            enable_cleaning: 청소 실행 기능 활성화 여부
+            backend_url: LocusBackend API URL
+        """
         print("="*60)
         print("GRU Predictor Initializing...")
         print("="*60)
@@ -53,6 +60,19 @@ class GRUPredictor:
         self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")  # 모든 메시지 구독
         print(f"ZeroMQ bound to {ZMQ_ENDPOINT}")
         print("Subscribed to all sensor messages")
+
+        # Cleaning Executor 초기화
+        self.enable_cleaning = enable_cleaning
+        if self.enable_cleaning:
+            print("\nInitializing Cleaning Executor...")
+            self.cleaning_executor = CleaningExecutor(
+                backend_url=backend_url,
+                device_id="robot_001",
+                enable_backend=True
+            )
+        else:
+            self.cleaning_executor = None
+            print("\nCleaning execution disabled (prediction only mode)")
 
         # 모델 로드
         print("\nLoading models...")
@@ -208,7 +228,7 @@ class GRUPredictor:
 
     def predict(self):
         """
-        GRU 모델을 사용하여 예측을 수행합니다.
+        GRU 모델을 사용하여 예측을 수행하고, 청소 결정을 내립니다.
         """
         try:
             print("\n" + "="*60)
@@ -225,6 +245,11 @@ class GRUPredictor:
             print_prediction_result(prediction, ZONES)
 
             self.prediction_count += 1
+
+            # ✨ 청소 실행 (활성화된 경우)
+            if self.enable_cleaning and self.cleaning_executor:
+                print("\n🤖 Triggering Cleaning Executor...")
+                self.cleaning_executor.handle_prediction_sync(prediction)
 
             # 버퍼 초기화
             self.context_buffer.clear()

@@ -1,8 +1,9 @@
 """
 학습 데이터셋 생성 모듈
-GRU 학습을 위한 시나리오 기반의 모의 데이터셋을 생성합니다.
+GRU 학습을 위한 현실적인 일상 루틴 기반 데이터셋을 생성합니다.
 """
 
-from .scenario_generator import ScenarioGenerator
+from .realistic_dataset_generator import RealisticRoutineGenerator
+from .realistic_action_patterns import RealisticActionPattern
 
-__all__ = ['ScenarioGenerator']
+__all__ = ['RealisticRoutineGenerator', 'RealisticActionPattern']

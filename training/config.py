@@ -42,23 +42,23 @@ DATA_CONFIG = {
 
 # ========== AttentionEncoder 학습 설정 ==========
 ENCODER_TRAINING = {
-    'epochs': 100,
-    'batch_size': 64,
-    'learning_rate': 0.001,
+    'epochs': 150,              # 충분한 에포크 (Early Stopping으로 자동 종료)
+    'batch_size': 256,          # 대규모 데이터셋용 (56K 샘플)
+    'learning_rate': 0.001,     # Adam 기본값
     'validation_split': 0.2,
-    'early_stopping_patience': 15,
-    'reduce_lr_patience': 7,
-    'min_lr': 1e-6,
+    'early_stopping_patience': 20,  # 충분히 여유있게
+    'reduce_lr_patience': 8,    # LR 감소 전 대기
+    'min_lr': 1e-7,             # 최소 학습률
 }
 
 # ========== GRU 학습 설정 ==========
 GRU_TRAINING = {
-    'epochs': 50,
-    'batch_size': 32,
-    'learning_rate': 0.001,
-    'early_stopping_patience': 10,
-    'reduce_lr_patience': 5,
-    'min_lr': 1e-6,
+    'epochs': 100,              # 충분한 에포크 (Early Stopping으로 자동 종료)
+    'batch_size': 128,          # 시퀀스 데이터용 (메모리 고려)
+    'learning_rate': 0.0005,    # GRU는 조금 낮게
+    'early_stopping_patience': 15,  # 충분히 여유있게
+    'reduce_lr_patience': 6,    # LR 감소 전 대기
+    'min_lr': 1e-7,             # 최소 학습률
 }
 
 # ========== 경로 설정 ==========
