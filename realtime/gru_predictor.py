@@ -26,6 +26,7 @@ from realtime.on_device_trainer import OnDeviceTrainer
 
 # ZeroMQ 설정
 ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
+ZMQ_BRIDGE_ENDPOINT = "ipc:///tmp/locus_bridge.ipc"  # 브릿지 전용
 
 # 모델 경로
 GRU_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'gru', 'gru_model.keras')
@@ -77,6 +78,11 @@ class GRUPredictor:
         self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")  # 모든 메시지 구독
         print(f"ZeroMQ bound to {ZMQ_ENDPOINT}")
         print("Subscribed to all sensor messages")
+
+        # ZeroMQ Publisher for Bridge (센서 데이터를 브릿지로 재전송)
+        self.zmq_bridge_socket = self.zmq_context.socket(zmq.PUB)
+        self.zmq_bridge_socket.bind(ZMQ_BRIDGE_ENDPOINT)
+        print(f"ZeroMQ bridge publisher bound to {ZMQ_BRIDGE_ENDPOINT}")
 
         # 모델 로드
         print("\nLoading models...")
@@ -202,6 +208,9 @@ class GRUPredictor:
             # 논블로킹 방식으로 타임아웃과 함께 메시지 수신
             if self.zmq_socket.poll(timeout=100):  # 100ms 타임아웃
                 message = self.zmq_socket.recv_pyobj()
+
+                # 브릿지로 재전송 (websocket_bridge가 받을 수 있도록)
+                self.zmq_bridge_socket.send_pyobj(message)
 
                 # 메시지에서 데이터 추출
                 sensor_type = message.get('type')
@@ -461,6 +470,7 @@ class GRUPredictor:
 
         # ZeroMQ 종료
         self.zmq_socket.close()
+        self.zmq_bridge_socket.close()
         self.zmq_context.term()
 
         print("GRU Predictor stopped!")

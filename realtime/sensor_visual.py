@@ -17,6 +17,8 @@ import zmq
 import time
 import numpy as np
 from realtime.utils import yolo_results_to_14dim, extract_pose_keypoints, YOLO_CLASSES
+from flask import Flask, Response
+import threading
 
 # ZeroMQ 설정
 ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
@@ -24,6 +26,31 @@ ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
 # YOLO 모델 경로
 YOLO_DETECT_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'yolo', 'best.pt')
 YOLO_POSE_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'yolo', 'yolo11n-pose.pt')
+
+# Flask 앱 (MJPEG 스트리밍용)
+flask_app = Flask(__name__)
+latest_frame = None
+frame_lock = threading.Lock()
+
+
+def generate_mjpeg():
+    """MJPEG 스트림 생성"""
+    global latest_frame
+    while True:
+        with frame_lock:
+            if latest_frame is not None:
+                # JPEG로 인코딩
+                ret, buffer = cv2.imencode('.jpg', latest_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if ret:
+                    frame_bytes = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.033)  # ~30fps
+
+@flask_app.route('/video_feed')
+def video_feed():
+    """MJPEG 스트림 엔드포인트"""
+    return Response(generate_mjpeg(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 class VisualSensor:
@@ -34,7 +61,7 @@ class VisualSensor:
     웹캠에서 프레임을 읽고 YOLO로 감지한 후, 결과를 ZeroMQ로 전송합니다.
     """
 
-    def __init__(self, camera_id=0, enable_pose=True):
+    def __init__(self, camera_id=0, enable_pose=True, enable_streaming=True):
         """
         비주얼 센서를 초기화합니다.
 
@@ -47,6 +74,7 @@ class VisualSensor:
         print("="*60)
 
         self.enable_pose = enable_pose
+        self.enable_streaming = enable_streaming
 
         # ZeroMQ Publisher 설정
         self.zmq_context = zmq.Context()
@@ -73,6 +101,13 @@ class VisualSensor:
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open camera {camera_id}")
         print(f"\nCamera {camera_id} opened!")
+
+        # MJPEG 스트리밍 서버 시작
+        if self.enable_streaming:
+            print("\nStarting MJPEG streaming server on http://0.0.0.0:5001/video_feed")
+            streaming_thread = threading.Thread(target=lambda: flask_app.run(host='0.0.0.0', port=5001, threaded=True, use_reloader=False), daemon=True)
+            streaming_thread.start()
+            time.sleep(1)  # 서버 시작 대기
 
         print("\nVisual Sensor ready!\n")
 
@@ -113,6 +148,9 @@ class VisualSensor:
                 detected_indices = np.where(visual_vec > 0)[0]
                 detected_objects = [YOLO_CLASSES[i] for i in detected_indices]
 
+                # Annotated 프레임 생성 (MJPEG 스트리밍용)
+                annotated_frame = detect_results[0].plot()
+
                 # ZeroMQ로 visual 데이터 전송
                 message_visual = {
                     'type': 'visual',
@@ -127,6 +165,16 @@ class VisualSensor:
                 if self.enable_pose and self.yolo_pose is not None:
                     pose_results = self.yolo_pose(frame, verbose=False)
                     pose_vec = extract_pose_keypoints(pose_results)
+
+                    # Pose keypoints도 프레임에 추가
+                    if np.any(pose_vec > 0):
+                        annotated_frame = pose_results[0].plot(img=annotated_frame)
+
+                # MJPEG 스트리밍용 프레임 업데이트
+                if self.enable_streaming:
+                    global latest_frame
+                    with frame_lock:
+                        latest_frame = annotated_frame.copy()
 
                 # ZeroMQ로 pose 데이터 전송
                 message_pose = {

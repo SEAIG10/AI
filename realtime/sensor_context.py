@@ -1,11 +1,12 @@
 """
-실시간 데모 - 컨텍스트 센서 (공간/시간)
+실시간  - 컨텍스트 센서 (공간/시간)
 공간, 시간 정보를 생성하여 ZeroMQ로 전송합니다.
 Pose 정보는 sensor_visual.py의 YOLOv11n-pose에서 전송합니다.
 """
 
 import sys
 import os
+#TODO: LocusMobileTracker 재연결
 
 # 프로젝트 루트 경로 추가
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -34,7 +35,6 @@ class ContextSensor:
     def __init__(self, default_zone="living_room", enable_location_tracker=False, tracker_ws_uri=None):
         """
         컨텍스트 센서를 초기화합니다.
-
         Args:
             default_zone: 기본 Zone (GPS 부재 시 수동으로 입력)
             enable_location_tracker: LocationTracker WebSocket 사용 여부
