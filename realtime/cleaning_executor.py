@@ -24,16 +24,23 @@ class CleaningExecutor:
     def __init__(self,
                  backend_url: str = "http://localhost:4000",
                  device_id: str = "robot_001",
-                 enable_backend: bool = True):
+                 enable_backend: bool = True,
+                 mqtt_client=None,
+                 feedback_callback=None):
         """
         Args:
             backend_url: LocusBackend API URL
             device_id: 로봇 디바이스 ID
             enable_backend: Backend 통신 활성화 여부 (False면 완전 오프라인)
+            mqtt_client: MQTT 클라이언트 (선택)
+            feedback_callback: 청소 후 오염도 피드백을 받을 콜백 함수 (선택)
+                              signature: callback(actual_pollution: np.ndarray)
         """
         self.backend_url = backend_url
         self.device_id = device_id
         self.enable_backend = enable_backend
+        self.mqtt_client = mqtt_client
+        self.feedback_callback = feedback_callback
 
         # Decision Engine 생성
         self.decision_engine = LocalDecisionEngine(
@@ -110,23 +117,46 @@ class CleaningExecutor:
             print(f"\n[{i}/{len(decision.path)}] 🧹 Cleaning zone: {zone}")
             print(f"   Priority: {decision.priority_order[i-1]:.2%}")
 
+            # MQTT: 청소 시작 알림
+            if self.mqtt_client:
+                self.mqtt_client.publish_cleaning_status(
+                    status="started",
+                    zone=zone,
+                    priority=float(decision.priority_order[i-1])
+                )
+
             # TODO: 실제 로봇 모터 제어
             # robot_controller.move_to_zone(zone)
             # robot_controller.start_cleaning()
 
             # 시뮬레이션: 구역당 10초 (실제로는 10분)
+            start_time = time.time()
             await asyncio.sleep(10)
+            duration = time.time() - start_time
 
             print(f"   ✅ Zone '{zone}' cleaned!")
+
+            # MQTT: 청소 완료 알림
+            if self.mqtt_client:
+                self.mqtt_client.publish_cleaning_result(
+                    zone=zone,
+                    duration_seconds=duration
+                )
 
         self.is_cleaning = False
 
         if not self.current_override:
             print(f"\n{'='*60}")
-            print(f"🎉 Cleaning Session #{self.cleaning_count} Completed!")
+            print(f"Cleaning Session #{self.cleaning_count} Completed!")
             print(f"   Total zones cleaned: {len(decision.path)}")
             print(f"   Total time: {decision.estimated_time} minutes (simulated)")
             print(f"{'='*60}\n")
+
+            # 청소 후 오염도 측정 및 피드백
+            if self.feedback_callback:
+                actual_pollution = self._measure_pollution_after_cleaning()
+                print(f"\n[Feedback] Measured pollution after cleaning: {actual_pollution}")
+                self.feedback_callback(actual_pollution)
         else:
             # 오버라이드로 중단됨
             self.current_override = None
@@ -178,6 +208,26 @@ class CleaningExecutor:
             print(f"⚠️  [Backend] Network error (continuing anyway): {e}")
         except Exception as e:
             print(f"⚠️  [Backend] Unexpected error: {e}")
+
+    def _measure_pollution_after_cleaning(self) -> np.ndarray:
+        """
+        청소 후 실제 오염도를 측정합니다.
+
+        TODO: 실제 센서로부터 오염도 측정
+        현재는 시뮬레이션 (청소 후 낮은 값 반환)
+
+        Returns:
+            측정된 오염도 (num_zones,) numpy array
+        """
+        # 시뮬레이션: 청소 후 0.1~0.3 범위의 낮은 오염도
+        num_zones = len(self.decision_engine.zone_names)
+        actual_pollution = np.random.uniform(0.1, 0.3, num_zones).astype(np.float32)
+
+        # TODO: 실제 구현
+        # sensors = collect_sensor_data()
+        # actual_pollution = compute_pollution_from_sensors(sensors)
+
+        return actual_pollution
 
     def handle_prediction_sync(self, prediction: np.ndarray):
         """

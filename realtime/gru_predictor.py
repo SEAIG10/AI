@@ -20,6 +20,9 @@ from src.context_fusion.attention_context_encoder import create_attention_encode
 from src.model.gru_model import FedPerGRUModel
 from realtime.utils import print_prediction_result, ZONES
 from realtime.cleaning_executor import CleaningExecutor
+from realtime.mqtt_client import EdgeMQTTClient
+from realtime.zone_manager import ZoneManager
+from realtime.on_device_trainer import OnDeviceTrainer
 
 # ZeroMQ 설정
 ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
@@ -41,17 +44,31 @@ class GRUPredictor:
     ZeroMQ로 센서 데이터를 수신하여 AttentionContextEncoder를 거친 후, GRU 모델로 예측을 수행합니다.
     """
 
-    def __init__(self, enable_cleaning: bool = True, backend_url: str = "http://localhost:4000"):
+    def __init__(
+        self,
+        enable_cleaning: bool = True,
+        enable_on_device_training: bool = True,
+        backend_url: str = "http://localhost:4000",
+        home_id: str = "home_default",
+        mqtt_broker: str = "localhost",
+        mqtt_port: int = 1883
+    ):
         """
         GRU 예측기를 초기화합니다.
 
         Args:
             enable_cleaning: 청소 실행 기능 활성화 여부
+            enable_on_device_training: 온디바이스 Head 학습 활성화 여부
             backend_url: LocusBackend API URL
+            home_id: 집 ID
+            mqtt_broker: MQTT Broker 주소
+            mqtt_port: MQTT Broker 포트
         """
         print("="*60)
         print("GRU Predictor Initializing...")
         print("="*60)
+
+        self.home_id = home_id
 
         # ZeroMQ Subscriber 설정 (BIND - 구독자가 바인드하고, 발행자가 연결)
         self.zmq_context = zmq.Context()
@@ -60,19 +77,6 @@ class GRUPredictor:
         self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")  # 모든 메시지 구독
         print(f"ZeroMQ bound to {ZMQ_ENDPOINT}")
         print("Subscribed to all sensor messages")
-
-        # Cleaning Executor 초기화
-        self.enable_cleaning = enable_cleaning
-        if self.enable_cleaning:
-            print("\nInitializing Cleaning Executor...")
-            self.cleaning_executor = CleaningExecutor(
-                backend_url=backend_url,
-                device_id="robot_001",
-                enable_backend=True
-            )
-        else:
-            self.cleaning_executor = None
-            print("\nCleaning execution disabled (prediction only mode)")
 
         # 모델 로드
         print("\nLoading models...")
@@ -92,6 +96,81 @@ class GRUPredictor:
         self.gru_model.load(GRU_MODEL_PATH)
         print("     GRU Model loaded!")
 
+        # MQTT 클라이언트 초기화
+        print("\n  3. MQTT Client...")
+        self.mqtt_client = EdgeMQTTClient(
+            home_id=home_id,
+            device_id="edge_device_001",
+            broker_host=mqtt_broker,
+            broker_port=mqtt_port
+        )
+
+        # MQTT 연결
+        if self.mqtt_client.connect():
+            print("     MQTT Client connected!")
+        else:
+            print("     ⚠️  MQTT Client connection failed (continuing without MQTT)")
+            self.mqtt_client = None
+
+        # OnDeviceTrainer 초기화 (ZoneManager보다 먼저)
+        self.enable_on_device_training = enable_on_device_training
+        if self.enable_on_device_training:
+            print("\n  4. OnDeviceTrainer...")
+            model_save_path = os.path.join(os.path.dirname(__file__), '..', 'models', 'gru', 'gru_model_personalized.keras')
+            self.on_device_trainer = OnDeviceTrainer(
+                gru_model=self.gru_model,
+                buffer_size=300,
+                min_samples_for_training=100,
+                batch_size=16,
+                epochs_per_update=5,
+                learning_rate=0.0005,
+                auto_save_path=model_save_path,
+                mqtt_client=self.mqtt_client
+            )
+            print("     OnDeviceTrainer initialized!")
+        else:
+            self.on_device_trainer = None
+            print("\n  4. On-device training disabled")
+
+        # ZoneManager 초기화
+        print("\n  5. ZoneManager...")
+        self.zone_manager = ZoneManager(
+            gru_model=self.gru_model,
+            mqtt_client=self.mqtt_client,
+            on_device_trainer=self.on_device_trainer
+        )
+        print("     ZoneManager initialized!")
+
+        # MQTT 핸들러 등록
+        if self.mqtt_client:
+            self.mqtt_client.set_zone_update_handler(
+                lambda zones: self.zone_manager.update_zones(self.home_id, zones)
+            )
+
+            # 온디바이스 학습 핸들러 등록
+            if self.enable_on_device_training:
+                self.mqtt_client.set_training_start_handler(
+                    lambda force=False: self._handle_training_command(force)
+                )
+
+            print("     MQTT handlers registered!")
+
+        # Cleaning Executor 초기화
+        self.enable_cleaning = enable_cleaning
+        if self.enable_cleaning:
+            print("\n  6. Cleaning Executor...")
+            self.cleaning_executor = CleaningExecutor(
+                backend_url=backend_url,
+                device_id="robot_001",
+                enable_backend=True,
+                mqtt_client=self.mqtt_client,
+                feedback_callback=self._handle_cleaning_feedback if self.enable_on_device_training else None
+            )
+            print("     Cleaning Executor initialized!")
+        else:
+            self.cleaning_executor = None
+            print("\nCleaning execution disabled (prediction only mode)")
+
         # ROS ApproximateTimeSynchronizer 방식: 센서별 큐
         self.sensor_queues = {
             'visual': deque(maxlen=QUEUE_SIZE),
@@ -108,6 +187,10 @@ class GRUPredictor:
         self.timestep_count = 0
         self.prediction_count = 0
         self.sync_dropped = 0  # 동기화 실패로 폐기된 데이터 수
+
+        # 피드백을 위한 임시 저장소
+        self.last_context_sequence = None  # 마지막 예측에 사용된 context sequence (30, 160)
+        self.last_prediction = None  # 마지막 예측 결과
 
         print("\nGRU Predictor ready!\n")
 
@@ -238,17 +321,33 @@ class GRUPredictor:
             # 버퍼를 numpy 배열로 변환
             X = np.array(self.context_buffer).reshape(1, CONTEXT_BUFFER_SIZE, 160)
 
+            # 온디바이스 학습을 위해 context sequence 저장
+            if self.enable_on_device_training:
+                self.last_context_sequence = X[0].copy()  # (30, 160)
+
             # GRU 모델로 예측
             prediction = self.gru_model.predict(X)[0]
+            self.last_prediction = prediction.copy()
 
             # 예측 결과 출력
             print_prediction_result(prediction, ZONES)
 
             self.prediction_count += 1
 
-            # ✨ 청소 실행 (활성화된 경우)
+            # MQTT로 오염도 예측 발행
+            if self.mqtt_client:
+                zone_names = self.zone_manager.get_current_zones()
+                predictions_dict = {}
+                for i, zone in enumerate(zone_names):
+                    zone_name = zone.get('name', f'Zone {i}')
+                    if i < len(prediction):
+                        predictions_dict[zone_name] = float(prediction[i])
+
+                self.mqtt_client.publish_pollution_prediction(predictions_dict)
+
+            # 청소 실행 (활성화된 경우)
             if self.enable_cleaning and self.cleaning_executor:
-                print("\n🤖 Triggering Cleaning Executor...")
+                print("\nTriggering Cleaning Executor...")
                 self.cleaning_executor.handle_prediction_sync(prediction)
 
             # 버퍼 초기화
@@ -279,16 +378,104 @@ class GRUPredictor:
         finally:
             self.cleanup()
 
+    def _handle_cleaning_feedback(self, actual_pollution: np.ndarray):
+        """
+        CleaningExecutor로부터 청소 후 실제 오염도 피드백을 받아 OnDeviceTrainer에 전달합니다.
+
+        Args:
+            actual_pollution: 청소 후 측정된 실제 오염도 (num_zones,)
+        """
+        if not self.enable_on_device_training or self.on_device_trainer is None:
+            return
+
+        if self.last_context_sequence is None:
+            print("Warning: No context sequence saved for feedback")
+            return
+
+        print(f"\n[OnDevice Learning] Feedback received")
+        print(f"  Context sequence shape: {self.last_context_sequence.shape}")
+        print(f"  Actual pollution: {actual_pollution}")
+
+        # OnDeviceTrainer에 샘플 추가
+        self.on_device_trainer.add_sample(
+            context_sequence=self.last_context_sequence,
+            pollution_label=actual_pollution
+        )
+
+    def _handle_training_command(self, force: bool = False):
+        """
+        MQTT를 통해 받은 학습 시작 명령을 처리합니다.
+
+        Args:
+            force: True면 버퍼 크기 무시하고 강제 학습
+        """
+        print(f"\n[MQTT] Training command received (force={force})")
+
+        if not self.enable_on_device_training or self.on_device_trainer is None:
+            print("Warning: On-device training is disabled")
+            if self.mqtt_client:
+                self.mqtt_client.publish_training_status(
+                    "failed",
+                    reason="training_disabled"
+                )
+            return
+
+        # MQTT로 학습 시작 상태 전송
+        if self.mqtt_client:
+            buffer_size = len(self.on_device_trainer.X_buffer)
+            self.mqtt_client.publish_training_status(
+                "started",
+                buffer_size=buffer_size,
+                min_samples=self.on_device_trainer.min_samples_for_training,
+                force=force
+            )
+
+        # ZoneManager를 통해 학습 시작
+        if force:
+            # 강제 학습: 버퍼에 데이터가 있으면 무조건 학습
+            if len(self.on_device_trainer.X_buffer) > 0:
+                print(f"  Forcing training with {len(self.on_device_trainer.X_buffer)} samples")
+                self.on_device_trainer.start_background_training()
+            else:
+                print("  No samples in buffer, cannot train")
+                if self.mqtt_client:
+                    self.mqtt_client.publish_training_status(
+                        "failed",
+                        reason="no_samples"
+                    )
+        else:
+            # 일반 학습: ZoneManager가 조건 체크
+            self.zone_manager.start_on_device_training()
+
     def cleanup(self):
         """사용한 리소스를 정리합니다."""
         print("\nCleaning up GRU Predictor...")
+
+        # OnDeviceTrainer 종료
+        if self.on_device_trainer:
+            self.on_device_trainer.stop()
+
+        # MQTT 연결 종료
+        if self.mqtt_client:
+            self.mqtt_client.disconnect()
+
+        # ZeroMQ 종료
         self.zmq_socket.close()
         self.zmq_context.term()
+
         print("GRU Predictor stopped!")
         print(f"\nStatistics:")
         print(f"  - Total timesteps collected: {self.timestep_count}")
         print(f"  - Total predictions made: {self.prediction_count}")
         print(f"  - Sync failures (dropped): {self.sync_dropped}")
+
+        # OnDeviceTrainer 통계
+        if self.on_device_trainer:
+            stats = self.on_device_trainer.get_statistics()
+            print(f"\nOn-Device Training Statistics:")
+            print(f"  - Buffer size: {stats['buffer_size']}")
+            print(f"  - Total samples collected: {stats['total_samples_collected']}")
+            print(f"  - Total training runs: {stats['total_training_runs']}")
 
 
 if __name__ == "__main__":

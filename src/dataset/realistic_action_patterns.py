@@ -243,6 +243,271 @@ class RealisticActionPattern:
                 'living_room': 0.0
             },
             'notes': '믹서기 → 액체/고체 튐'
+        },
+
+        # ═══════════════════════════════════════
+        # 추가 오염 없는 활동
+        # ═══════════════════════════════════════
+
+        'reading_book': {
+            'description': '책 읽기',
+            'zones': ['bedroom', 'living_room', 'balcony'],
+            'visual_objects': ['chair', 'sofa', 'lamp', 'bed'],
+            'audio_events': [],  # 조용함
+            'duration_min': (30, 120),
+            'pollution_result': {
+                'bedroom': 0.0,
+                'living_room': 0.0,
+                'balcony': 0.0,
+                'kitchen': 0.0
+            },
+            'notes': '책 읽기는 완전 깨끗'
+        },
+
+        'meditating': {
+            'description': '명상/요가',
+            'zones': ['bedroom', 'living_room', 'balcony'],
+            'visual_objects': ['lamp'],
+            'audio_events': [],
+            'duration_min': (15, 60),
+            'pollution_result': {
+                'bedroom': 0.0,
+                'living_room': 0.0,
+                'balcony': 0.0,
+                'kitchen': 0.0
+            },
+            'notes': '명상은 움직임 없음'
+        },
+
+        'standing_by_window': {
+            'description': '창문 앞에 서 있기',
+            'zones': ['bedroom', 'living_room', 'balcony'],
+            'visual_objects': ['window'],
+            'audio_events': [],
+            'duration_min': (5, 20),
+            'pollution_result': {
+                'bedroom': 0.0,
+                'living_room': 0.0,
+                'balcony': 0.0,
+                'kitchen': 0.0
+            },
+            'notes': '창밖 보기만 함'
+        },
+
+        'listening_music': {
+            'description': '음악 듣기',
+            'zones': ['bedroom', 'living_room'],
+            'visual_objects': ['sofa', 'bed', 'laptop'],
+            'audio_events': [],  # 음악 자체는 YAMNet 범위 밖
+            'duration_min': (20, 90),
+            'pollution_result': {
+                'bedroom': 0.0,
+                'living_room': 0.0,
+                'balcony': 0.0,
+                'kitchen': 0.0
+            },
+            'notes': '음악만 듣기'
+        },
+
+        # ═══════════════════════════════════════
+        # 추가 오염 발생 활동
+        # ═══════════════════════════════════════
+
+        'drinking_beverages': {
+            'description': '음료 마시기',
+            'zones': ['kitchen', 'living_room', 'bedroom'],
+            'visual_objects': ['table', 'chair', 'sofa'],
+            'audio_events': ['water_tap', 'dishes'],
+            'duration_min': (3, 10),
+            'pollution_result': {
+                'kitchen': 0.15,  # 물 흘림 가능
+                'living_room': 0.2,
+                'bedroom': 0.1
+            },
+            'notes': '음료 흘림 가능'
+        },
+
+        'eating_snacks_in_bed': {
+            'description': '침대에서 간식 먹기',
+            'zones': ['bedroom'],
+            'visual_objects': ['bed', 'lamp'],
+            'audio_events': ['chewing'],
+            'duration_min': (10, 30),
+            'pollution_result': {
+                'bedroom': 0.75,  # 침대에 부스러기
+                'living_room': 0.0
+            },
+            'notes': '침대에서 먹으면 부스러기 많이 떨어짐'
+        },
+
+        'preparing_simple_food': {
+            'description': '간단한 음식 준비 (샌드위치 등)',
+            'zones': ['kitchen'],
+            'visual_objects': ['table', 'chair'],
+            'audio_events': ['chopping', 'dishes', 'cutlery'],
+            'duration_min': (5, 15),
+            'pollution_result': {
+                'kitchen': 0.5,  # 요리보다 적음
+                'living_room': 0.0
+            },
+            'notes': '간단한 조리는 중간 오염'
+        },
+
+        'opening_packages': {
+            'description': '택배 개봉하기',
+            'zones': ['living_room', 'bedroom', 'balcony'],
+            'visual_objects': ['table', 'chair', 'sofa'],
+            'audio_events': [],
+            'duration_min': (5, 15),
+            'pollution_result': {
+                'living_room': 0.3,  # 포장재 부스러기
+                'bedroom': 0.25,
+                'balcony': 0.2
+            },
+            'notes': '포장재, 스티로폼 부스러기'
+        },
+
+        'exercising_indoor': {
+            'description': '실내 운동',
+            'zones': ['living_room', 'bedroom', 'balcony'],
+            'visual_objects': ['lamp'],
+            'audio_events': ['footsteps'],
+            'duration_min': (20, 60),
+            'pollution_result': {
+                'living_room': 0.2,  # 땀, 발자국
+                'bedroom': 0.15,
+                'balcony': 0.1
+            },
+            'notes': '운동 중 땀, 발자국 먼지'
+        },
+
+        # ═══════════════════════════════════════
+        # 추가 청소 활동
+        # ═══════════════════════════════════════
+
+        'wiping_table': {
+            'description': '테이블 닦기',
+            'zones': ['kitchen', 'living_room'],
+            'visual_objects': ['table', 'chair'],
+            'audio_events': ['water_tap', 'sink'],
+            'duration_min': (3, 10),
+            'pollution_result': {
+                'kitchen': -0.4,  # 테이블 청소
+                'living_room': -0.3
+            },
+            'notes': '테이블만 닦기'
+        },
+
+        'mopping_floor': {
+            'description': '걸레질하기',
+            'zones': ['kitchen', 'living_room', 'bedroom', 'balcony'],
+            'visual_objects': ['door'],
+            'audio_events': ['water_tap', 'sink', 'footsteps'],
+            'duration_min': (15, 40),
+            'pollution_result': {
+                'kitchen': -0.9,  # 걸레질은 청소기보다 강력
+                'living_room': -0.85,
+                'bedroom': -0.85,
+                'balcony': -0.7
+            },
+            'notes': '물걸레질은 오염 제거 효과 높음'
+        },
+
+        'organizing_items': {
+            'description': '물건 정리하기',
+            'zones': ['bedroom', 'living_room', 'kitchen'],
+            'visual_objects': ['wardrobe', 'chair', 'table'],
+            'audio_events': ['footsteps'],
+            'duration_min': (10, 30),
+            'pollution_result': {
+                'bedroom': -0.2,  # 약간 청소 효과
+                'living_room': -0.15,
+                'kitchen': -0.1
+            },
+            'notes': '정리정돈 중 약간 청소'
+        },
+
+        # ═══════════════════════════════════════
+        # 혼합 활동 (다양한 조합)
+        # ═══════════════════════════════════════
+
+        'hosting_guests': {
+            'description': '손님 맞이',
+            'zones': ['living_room', 'kitchen'],
+            'visual_objects': ['sofa', 'chair', 'table', 'tv'],
+            'audio_events': ['door', 'footsteps', 'speech', 'dishes'],
+            'duration_min': (60, 180),
+            'pollution_result': {
+                'living_room': 0.7,  # 손님 많으면 오염 높음
+                'kitchen': 0.5
+            },
+            'notes': '손님 방문 시 발자국, 음식 등'
+        },
+
+        'watering_plants': {
+            'description': '화분에 물주기',
+            'zones': ['balcony', 'living_room'],
+            'visual_objects': ['potted_plant', 'window'],
+            'audio_events': ['water_tap', 'footsteps'],
+            'duration_min': (5, 15),
+            'pollution_result': {
+                'balcony': 0.3,  # 물 흘림
+                'living_room': 0.15
+            },
+            'notes': '화분 물주기 시 물 흘림'
+        },
+
+        'pet_activities': {
+            'description': '반려동물 활동 (먹이, 놀이)',
+            'zones': ['kitchen', 'living_room', 'balcony'],
+            'visual_objects': ['table', 'sofa', 'door'],
+            'audio_events': ['dishes', 'footsteps'],
+            'duration_min': (10, 30),
+            'pollution_result': {
+                'kitchen': 0.6,  # 사료 흘림
+                'living_room': 0.55,  # 털, 발자국
+                'balcony': 0.4
+            },
+            'notes': '반려동물 사료, 털, 발자국'
+        },
+
+        'crafting_hobbies': {
+            'description': '공예/취미 활동',
+            'zones': ['living_room', 'bedroom'],
+            'visual_objects': ['table', 'chair'],
+            'audio_events': [],
+            'duration_min': (30, 120),
+            'pollution_result': {
+                'living_room': 0.45,  # 재료 부스러기
+                'bedroom': 0.35
+            },
+            'notes': '공예 재료 부스러기'
+        },
+
+        'changing_clothes': {
+            'description': '옷 갈아입기',
+            'zones': ['bedroom'],
+            'visual_objects': ['wardrobe', 'bed', 'chair'],
+            'audio_events': ['footsteps'],
+            'duration_min': (5, 15),
+            'pollution_result': {
+                'bedroom': 0.1,  # 먼지, 옷 섬유
+                'living_room': 0.0
+            },
+            'notes': '옷 먼지, 섬유 약간'
+        },
+
+        'drying_laundry': {
+            'description': '빨래 널기',
+            'zones': ['balcony', 'living_room'],
+            'visual_objects': ['window', 'door'],
+            'audio_events': ['footsteps'],
+            'duration_min': (10, 20),
+            'pollution_result': {
+                'balcony': 0.25,  # 물 떨어짐
+                'living_room': 0.15
+            },
+            'notes': '젖은 빨래에서 물 떨어짐'
         }
     }
 

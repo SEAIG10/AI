@@ -346,7 +346,18 @@ def main():
     # ===== 단계 1: 데이터 로드 =====
     print("\n[단계 1] 데이터 로드 중...")
 
-    data_path = os.path.join(PATHS['data_dir'], 'realistic_training_dataset.npz')
+    # 대규모 데이터셋 우선 사용, 없으면 기본 데이터셋 사용
+    massive_data_path = os.path.join(PATHS['data_dir'], 'massive_dataset_2000days_3seeds.npz')
+    default_data_path = os.path.join(PATHS['data_dir'], 'realistic_training_dataset.npz')
+
+    if os.path.exists(massive_data_path):
+        data_path = massive_data_path
+        print(f"✓ 대규모 데이터셋 사용: {data_path}")
+    elif os.path.exists(default_data_path):
+        data_path = default_data_path
+        print(f"✓ 기본 데이터셋 사용: {data_path}")
+    else:
+        data_path = default_data_path
 
     if not os.path.exists(data_path):
         print(f"\n⚠️  오류: 학습 데이터를 찾을 수 없습니다: {data_path}")

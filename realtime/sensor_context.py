@@ -1,6 +1,7 @@
 """
-실시간 데모 - 컨텍스트 센서 (공간/시간/자세)
-공간, 시간, 자세 정보를 생성하여 ZeroMQ로 전송합니다.
+실시간 데모 - 컨텍스트 센서 (공간/시간)
+공간, 시간 정보를 생성하여 ZeroMQ로 전송합니다.
+Pose 정보는 sensor_visual.py의 YOLOv11n-pose에서 전송합니다.
 """
 
 import sys
@@ -25,8 +26,9 @@ ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
 
 class ContextSensor:
     """
-    컨텍스트 센서 (공간, 시간, 자세)
-    공간, 시간, 자세 정보를 생성하여 ZeroMQ로 전송합니다.
+    컨텍스트 센서 (공간, 시간)
+    공간, 시간 정보를 생성하여 ZeroMQ로 전송합니다.
+    Pose는 sensor_visual.py에서 YOLOv11n-pose로 처리됩니다.
     """
 
     def __init__(self, default_zone="living_room", enable_location_tracker=False, tracker_ws_uri=None):
@@ -39,7 +41,7 @@ class ContextSensor:
             tracker_ws_uri: LocationTracker 서버 주소 (예: ws://192.168.43.1:8080)
         """
         print("="*60)
-        print("Context Sensor (Spatial/Time/Pose) Initializing...")
+        print("Context Sensor (Spatial/Time) Initializing...")
         print("="*60)
 
         # ZeroMQ Publisher 설정
@@ -148,10 +150,6 @@ class ContextSensor:
                 now = datetime.now()
                 time_vec = get_time_features(now)
 
-                # 자세 정보 (51차원) - 데모용 모의 데이터
-                # 실제로는 sensor_visual에서 YOLO-Pose로 추출된 값을 사용
-                pose_vec = np.zeros(51, dtype=np.float32)
-
                 # ZeroMQ 전송 - 공간 정보 (측정 시작 시점의 타임스탬프 사용)
                 message_spatial = {
                     'type': 'spatial',
@@ -172,20 +170,10 @@ class ContextSensor:
                 }
                 self.zmq_socket.send_pyobj(message_time)
 
-                # ZeroMQ 전송 - 자세 정보 (동일 타임스탬프)
-                message_pose = {
-                    'type': 'pose',
-                    'data': pose_vec,
-                    'timestamp': start_timestamp,
-                    'sample_count': sample_count
-                }
-                self.zmq_socket.send_pyobj(message_pose)
-
                 # 로그 출력
                 print(f"[{sample_count:04d}] Context → ZMQ: "
                       f"zone={self.current_zone}, "
-                      f"hour={now.hour:02d}:{now.minute:02d}, "
-                      f"pose=mock")
+                      f"hour={now.hour:02d}:{now.minute:02d}")
 
                 sample_count += 1
                 time.sleep(interval)
@@ -207,7 +195,7 @@ class ContextSensor:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Context Sensor (Spatial/Time/Pose)")
+    parser = argparse.ArgumentParser(description="Context Sensor (Spatial/Time)")
     parser.add_argument("--interval", type=float, default=1.0,
                         help="Sensing interval in seconds (default: 1.0)")
     parser.add_argument("--zone", type=str, default="living_room",

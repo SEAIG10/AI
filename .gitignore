@@ -50,6 +50,7 @@ Thumbs.db
 *.log
 logs/
 data/                     # Runtime data and databases
+results/                  # Training results and metrics
 *.csv
 
 # Temporary files
