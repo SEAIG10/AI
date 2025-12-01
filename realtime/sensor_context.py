@@ -1,12 +1,12 @@
 """
-실시간  - 컨텍스트 센서 (공간/시간)
+실시간 데모 - 컨텍스트 센서 (공간/시간)
 공간, 시간 정보를 생성하여 ZeroMQ로 전송합니다.
+Zone 정보는 LocusBackend의 MQTT 메시지로부터 받아옵니다.
 Pose 정보는 sensor_visual.py의 YOLOv11n-pose에서 전송합니다.
 """
 
 import sys
 import os
-#TODO: LocusMobileTracker 재연결
 
 # 프로젝트 루트 경로 추가
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -16,10 +16,8 @@ import time
 import numpy as np
 from datetime import datetime
 from realtime.utils import zone_to_onehot, get_time_features, ZONES
-import asyncio
-import websockets
 import json
-import threading
+import paho.mqtt.client as mqtt
 
 # ZeroMQ 설정
 ZMQ_ENDPOINT = "ipc:///tmp/locus_sensors.ipc"
@@ -32,13 +30,14 @@ class ContextSensor:
     Pose는 sensor_visual.py에서 YOLOv11n-pose로 처리됩니다.
     """
 
-    def __init__(self, default_zone="living_room", enable_location_tracker=False, tracker_ws_uri=None):
+    def __init__(self, home_id, default_zone="living_room", mqtt_broker="mqtt.eclipseprojects.io", mqtt_port=1883):
         """
         컨텍스트 센서를 초기화합니다.
         Args:
-            default_zone: 기본 Zone (GPS 부재 시 수동으로 입력)
-            enable_location_tracker: LocationTracker WebSocket 사용 여부
-            tracker_ws_uri: LocationTracker 서버 주소 (예: ws://192.168.43.1:8080)
+            home_id: Home ID (필수) - LocusBackend에서 사용하는 집 ID
+            default_zone: 기본 Zone (MQTT 연결 전까지 사용)
+            mqtt_broker: MQTT 브로커 주소 (기본값: mqtt.eclipseprojects.io)
+            mqtt_port: MQTT 브로커 포트 (기본값: 1883)
         """
         print("="*60)
         print("Context Sensor (Spatial/Time) Initializing...")
@@ -50,55 +49,66 @@ class ContextSensor:
         self.zmq_socket.connect(ZMQ_ENDPOINT)
         print(f"ZeroMQ connected to {ZMQ_ENDPOINT}")
 
-        # 현재 Zone (실제 환경에서는 GPS 등으로 판단, 데모에서는 수동 입력)
+        # 현재 Zone (MQTT로부터 업데이트됨)
         self.current_zone = default_zone
         print(f"Default zone set to: {self.current_zone}")
 
-        # LocationTracker WebSocket 설정
-        self.enable_location_tracker = enable_location_tracker
-        self.tracker_ws_uri = tracker_ws_uri or "ws://192.168.43.1:8080"
+        # MQTT 클라이언트 설정 (LocusBackend 연동)
+        self.mqtt_broker = mqtt_broker
+        self.mqtt_port = mqtt_port
+        self.home_id = home_id
+        self.mqtt_client = None
 
-        if self.enable_location_tracker:
-            print(f"\n[LocationTracker] Enabled")
-            print(f"[LocationTracker] Connecting to: {self.tracker_ws_uri}")
-            # 백그라운드 스레드로 WebSocket 리스너 시작
-            self.ws_thread = threading.Thread(target=self._start_ws_listener, daemon=True)
-            self.ws_thread.start()
-        else:
-            print(f"\n[LocationTracker] Disabled (manual zone control)")
+        print(f"\n[MQTT] Connecting to LocusBackend...")
+        print(f"[MQTT] Broker: {self.mqtt_broker}:{self.mqtt_port}")
+        print(f"[MQTT] Topic: home/{self.home_id}/robot/location")
+        self._setup_mqtt_client()
 
         print("\nContext Sensor ready!\n")
 
-    def _start_ws_listener(self):
-        """백그라운드에서 WebSocket 리스너 실행"""
-        asyncio.run(self._listen_zone_updates())
+    def _setup_mqtt_client(self):
+        """MQTT 클라이언트를 설정하고 연결합니다."""
+        self.mqtt_client = mqtt.Client(client_id=f"context_sensor_{int(time.time())}")
+        self.mqtt_client.on_connect = self._on_mqtt_connect
+        self.mqtt_client.on_message = self._on_mqtt_message
+        self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
 
-    async def _listen_zone_updates(self):
-        """LocationTracker로부터 zone 업데이트 수신"""
         try:
-            async with websockets.connect(self.tracker_ws_uri) as ws:
-                # viewer로 식별
-                await ws.send(json.dumps({
-                    'type': 'identify',
-                    'clientType': 'viewer'
-                }))
-
-                print(f"[LocationTracker] Connected successfully")
-
-                while True:
-                    data = await ws.recv()
-                    message = json.loads(data)
-
-                    if message['type'] == 'location_update':
-                        new_zone = message['data'].get('zone', 'unknown')
-
-                        if new_zone != self.current_zone and new_zone != 'unknown':
-                            print(f"\n[LocationTracker] Zone update: {self.current_zone} -> {new_zone}\n")
-                            self.current_zone = new_zone
-
+            self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port, 60)
+            self.mqtt_client.loop_start()
+            print(f"[MQTT] Connection initiated...")
         except Exception as e:
-            print(f"[LocationTracker] Connection failed: {e}")
-            print(f"[LocationTracker] Using default zone: {self.current_zone}")
+            print(f"[MQTT] Connection failed: {e}")
+            print(f"[MQTT] Using default zone: {self.current_zone}")
+
+    def _on_mqtt_connect(self, client, userdata, flags, rc):
+        """MQTT 연결 성공 시 호출되는 콜백"""
+        if rc == 0:
+            print(f"[MQTT] Connected successfully!")
+            topic = f"home/{self.home_id}/robot/location"
+            client.subscribe(topic)
+            print(f"[MQTT] Subscribed to: {topic}")
+        else:
+            print(f"[MQTT] Connection failed with code {rc}")
+
+    def _on_mqtt_message(self, client, userdata, msg):
+        """MQTT 메시지 수신 시 호출되는 콜백"""
+        try:
+            payload = json.loads(msg.payload.decode())
+            new_zone = payload.get('zone')
+
+            # zone이 null이 아니고, 유효한 zone이며, 현재 zone과 다를 때만 업데이트
+            if new_zone and new_zone != 'null' and new_zone in ZONES and new_zone != self.current_zone:
+                print(f"\n[MQTT] Zone update: {self.current_zone} -> {new_zone}")
+                print(f"[MQTT] Position: x={payload.get('x'):.2f}, z={payload.get('z'):.2f}\n")
+                self.current_zone = new_zone
+        except Exception as e:
+            print(f"[MQTT] Error parsing message: {e}")
+
+    def _on_mqtt_disconnect(self, client, userdata, rc):
+        """MQTT 연결 해제 시 호출되는 콜백"""
+        if rc != 0:
+            print(f"[MQTT] Unexpected disconnect (code {rc}), attempting reconnect...")
 
     def set_zone(self, zone_name):
         """
@@ -126,14 +136,10 @@ class ContextSensor:
         print(f"  - Current zone: {self.current_zone}")
         print("  - Press Ctrl+C to quit")
 
-        if not self.enable_location_tracker:
-            print("\n[Manual Mode]")
-            print("  - Zone can be changed using set_zone() method")
-            print("  - Available zones:", ", ".join(ZONES))
-        else:
-            print("\n[LocationTracker Mode]")
-            print("  - Zone will update automatically from iPhone ARKit")
-
+        print("\n[MQTT Mode]")
+        print(f"  - Zone updates automatically from LocusBackend")
+        print(f"  - Listening to: home/{self.home_id}/robot/location")
+        print(f"  - Manual override available via set_zone() method")
         print()
 
         sample_count = 0
@@ -187,6 +193,14 @@ class ContextSensor:
     def cleanup(self):
         """사용한 리소스를 정리합니다."""
         print("\nCleaning up Context Sensor...")
+
+        # MQTT 클라이언트 정리
+        if self.mqtt_client:
+            self.mqtt_client.loop_stop()
+            self.mqtt_client.disconnect()
+            print("MQTT client disconnected")
+
+        # ZeroMQ 정리
         self.zmq_socket.close()
         self.zmq_context.term()
         print("Context Sensor stopped!")
@@ -195,23 +209,26 @@ class ContextSensor:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Context Sensor (Spatial/Time)")
+    parser = argparse.ArgumentParser(description="Context Sensor (Spatial/Time) with MQTT")
     parser.add_argument("--interval", type=float, default=1.0,
                         help="Sensing interval in seconds (default: 1.0)")
     parser.add_argument("--zone", type=str, default="living_room",
                         choices=ZONES,
-                        help=f"Initial zone (default: living_room)")
-    parser.add_argument("--enable-tracker", action="store_true",
-                        help="Enable LocationTracker WebSocket integration")
-    parser.add_argument("--tracker-uri", type=str, default="ws://192.168.43.1:8080",
-                        help="LocationTracker WebSocket URI (default: ws://192.168.43.1:8080)")
+                        help=f"Initial zone before MQTT connection (default: living_room)")
+    parser.add_argument("--mqtt-broker", type=str, default="mqtt.eclipseprojects.io",
+                        help="MQTT broker address (default: mqtt.eclipseprojects.io)")
+    parser.add_argument("--mqtt-port", type=int, default=1883,
+                        help="MQTT broker port (default: 1883)")
+    parser.add_argument("--home-id", type=int, required=True,
+                        help="Home ID for MQTT topic (required)")
 
     args = parser.parse_args()
 
     # 센서 시작
     sensor = ContextSensor(
+        home_id=args.home_id,
         default_zone=args.zone,
-        enable_location_tracker=args.enable_tracker,
-        tracker_ws_uri=args.tracker_uri
+        mqtt_broker=args.mqtt_broker,
+        mqtt_port=args.mqtt_port
     )
     sensor.run(interval=args.interval)

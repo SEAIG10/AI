@@ -4,7 +4,11 @@
       "WebFetch(domain:github.com)",
       "Read(//Users/inter4259/Projects/LocationDataLocus/**)",
       "Read(//Users/inter4259/Documents/Obsidian Vault/소프트웨어공학/**)",
-      "Read(//Users/inter4259/Projects/FL/**)"
+      "Read(//Users/inter4259/Projects/FL/**)",
+      "Read(//Users/inter4259/Projects/LOCUS/apps/backend/src/modules/mqtt/**)",
+      "Read(//Users/inter4259/Projects/LOCUS/apps/backend/**)",
+      "Read(//Users/inter4259/Projects/LOCUS/**)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []
