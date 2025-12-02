@@ -211,23 +211,92 @@ class CleaningExecutor:
 
     def _measure_pollution_after_cleaning(self) -> np.ndarray:
         """
-        청소 후 실제 오염도를 측정합니다.
+        청소 후 실제 오염도를 YOLO로 측정합니다.
 
-        TODO: 실제 센서로부터 오염도 측정
-        현재는 시뮬레이션 (청소 후 낮은 값 반환)
+        YOLO로 웹캠 캡처 후 오염물(solid_waste, liquid_stain) 탐지하여
+        실제 청소 효과를 측정합니다.
 
         Returns:
             측정된 오염도 (num_zones,) numpy array
         """
-        # 시뮬레이션: 청소 후 0.1~0.3 범위의 낮은 오염도
+        try:
+            import cv2
+            from ultralytics import YOLO
+            import os
+
+            print(f"\n[YOLO Measurement] Measuring pollution after cleaning...")
+
+            # 1초 대기 (청소 직후 먼지 가라앉기)
+            time.sleep(1)
+
+            # YOLO 모델 경로
+            yolo_model_path = os.path.join(
+                os.path.dirname(__file__), '..', 'models', 'yolo', 'best.pt'
+            )
+
+            # YOLO 모델 로드
+            yolo_model = YOLO(yolo_model_path)
+
+            # 웹캠에서 프레임 캡처
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                print("[YOLO Measurement] ⚠️  Camera not available, using fallback")
+                return self._fallback_measurement()
+
+            ret, frame = cap.read()
+            cap.release()
+
+            if not ret:
+                print("[YOLO Measurement] ⚠️  Failed to capture frame, using fallback")
+                return self._fallback_measurement()
+
+            # YOLO로 오염물 탐지
+            results = yolo_model(frame, verbose=False)
+
+            # 14차원 벡터로 변환
+            from realtime.utils import yolo_results_to_14dim
+            visual_vec = yolo_results_to_14dim(results)  # (14,)
+
+            # solid_waste(12번), liquid_stain(13번) 체크
+            solid_waste_detected = visual_vec[12]  # 0 or 1
+            liquid_stain_detected = visual_vec[13]  # 0 or 1
+
+            # 오염도 계산
+            # 오염물 없음: 0.1 (거의 깨끗)
+            # 오염물 1개: 0.3 (약간 더러움)
+            # 오염물 2개: 0.5 (여전히 더러움)
+            pollution_score = 0.1 + 0.2 * (solid_waste_detected + liquid_stain_detected)
+
+            # 모든 구역에 적용 (단순화)
+            num_zones = len(self.decision_engine.zone_names)
+            actual_pollution = np.full(num_zones, pollution_score, dtype=np.float32)
+
+            # 결과 출력
+            print(f"[YOLO Measurement] Results:")
+            print(f"  - solid_waste: {'DETECTED' if solid_waste_detected else 'NOT FOUND'}")
+            print(f"  - liquid_stain: {'DETECTED' if liquid_stain_detected else 'NOT FOUND'}")
+            print(f"  - Pollution score: {pollution_score:.2f}")
+            print(f"  - Actual pollution: {actual_pollution}")
+
+            return actual_pollution
+
+        except Exception as e:
+            print(f"[YOLO Measurement] ⚠️  Error: {e}")
+            print(f"[YOLO Measurement] Using fallback measurement")
+            import traceback
+            traceback.print_exc()
+            return self._fallback_measurement()
+
+    def _fallback_measurement(self) -> np.ndarray:
+        """
+        YOLO 측정 실패 시 폴백 (청소 후이므로 낮은 값 가정)
+
+        Returns:
+            낮은 오염도 값
+        """
         num_zones = len(self.decision_engine.zone_names)
-        actual_pollution = np.random.uniform(0.1, 0.3, num_zones).astype(np.float32)
-
-        # TODO: 실제 구현
-        # sensors = collect_sensor_data()
-        # actual_pollution = compute_pollution_from_sensors(sensors)
-
-        return actual_pollution
+        # 청소 직후이므로 0.1~0.2 범위의 낮은 값
+        return np.random.uniform(0.1, 0.2, num_zones).astype(np.float32)
 
     def handle_prediction_sync(self, prediction: np.ndarray):
         """

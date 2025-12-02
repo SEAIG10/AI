@@ -31,51 +31,49 @@
   font-weight: 400;
 }
 
-.sidebar-nav {
+.sidebar-info {
   flex: 1;
-  padding: 1rem 0;
+  padding: 1.5rem 0;
   overflow-y: auto;
 }
 
-.nav-item {
+.info-section {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  margin: 0.25rem 1rem;
-  text-decoration: none;
-  color: var(--text-secondary);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 0.5rem 1rem;
+  background: rgba(165, 0, 52, 0.05);
   border-radius: 14px;
-  border-left: none;
+  border-left: 3px solid var(--accent);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.nav-item:hover {
-  background: #f5f6f7;
-  color: var(--text-primary);
+.info-section:hover {
+  background: rgba(165, 0, 52, 0.08);
   transform: translateX(2px);
-}
-
-.nav-item.active {
-  background: rgba(165, 0, 52, 0.1);
-  color: var(--accent);
   box-shadow: 0 2px 8px rgba(165, 0, 52, 0.08);
 }
 
-.nav-icon {
+.info-icon {
   font-size: 1.5rem;
   width: 2rem;
   text-align: center;
 }
 
-.nav-title {
+.info-content {
+  flex: 1;
+}
+
+.info-title {
   font-weight: 600;
   font-size: 1rem;
+  color: var(--text-primary);
   margin-bottom: 0.125rem;
   letter-spacing: -0.2px;
 }
 
-.nav-desc {
+.info-desc {
   font-size: 0.8125rem;
   color: var(--text-secondary);
   font-weight: 400;

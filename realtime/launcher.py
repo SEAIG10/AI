@@ -115,7 +115,12 @@ def main():
         # 4. Context Sensor
         print("\n[4/4] Starting Context Sensor...")
         zone = "living_room"  # 기본값 자동 설정
-        context_args = ["--interval", "1.0", "--zone", zone]
+        context_args = [
+            "--interval", "1.0",
+            "--zone", zone,
+            "--home-id", "6",  # home_id 추가 (필수 인자)
+            "--mqtt-broker", "mqtt.eclipseprojects.io"
+        ]
 
         if args.enable_tracker:
             context_args.extend(["--enable-tracker", "--tracker-uri", args.tracker_uri])
