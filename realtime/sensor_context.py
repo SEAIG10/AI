@@ -30,7 +30,7 @@ class ContextSensor:
     Pose는 sensor_visual.py에서 YOLOv11n-pose로 처리됩니다.
     """
 
-    def __init__(self, home_id, default_zone="living_room", mqtt_broker="mqtt.eclipseprojects.io", mqtt_port=1883):
+    def __init__(self, home_id, default_zone="living_room", mqtt_broker="43.200.178.189", mqtt_port=1883):
         """
         컨텍스트 센서를 초기화합니다.
         Args:
@@ -215,8 +215,8 @@ if __name__ == "__main__":
     parser.add_argument("--zone", type=str, default="living_room",
                         choices=ZONES,
                         help=f"Initial zone before MQTT connection (default: living_room)")
-    parser.add_argument("--mqtt-broker", type=str, default="mqtt.eclipseprojects.io",
-                        help="MQTT broker address (default: mqtt.eclipseprojects.io)")
+    parser.add_argument("--mqtt-broker", type=str, default="43.200.178.189",
+                        help="MQTT broker address (default: 43.200.178.189)")
     parser.add_argument("--mqtt-port", type=int, default=1883,
                         help="MQTT broker port (default: 1883)")
     parser.add_argument("--home-id", type=int, required=True,

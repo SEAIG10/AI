@@ -49,9 +49,9 @@ class GRUPredictor:
         self,
         enable_cleaning: bool = True,
         enable_on_device_training: bool = True,
-        backend_url: str = "http://localhost:4000",
+        backend_url: str = "http://43.200.178.189:4000",
         home_id: str = "home_default",
-        mqtt_broker: str = "localhost",
+        mqtt_broker: str = "43.200.178.189",
         mqtt_port: int = 1883
     ):
         """

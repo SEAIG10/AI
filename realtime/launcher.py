@@ -119,7 +119,7 @@ def main():
             "--interval", "1.0",
             "--zone", zone,
             "--home-id", "6",  # home_id 추가 (필수 인자)
-            "--mqtt-broker", "mqtt.eclipseprojects.io"
+            "--mqtt-broker", "43.200.178.189"
         ]
 
         if args.enable_tracker:

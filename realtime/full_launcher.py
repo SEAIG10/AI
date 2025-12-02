@@ -126,7 +126,7 @@ def main():
             "--interval", "1.0",
             "--zone", args.zone,
             "--home-id", "6",
-            "--mqtt-broker", "mqtt.eclipseprojects.io"
+            "--mqtt-broker", "43.200.178.189"
         ]
 
         if args.enable_tracker:

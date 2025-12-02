@@ -22,7 +22,7 @@ class CleaningExecutor:
     """
 
     def __init__(self,
-                 backend_url: str = "http://localhost:4000",
+                 backend_url: str = "http://43.200.178.189:4000",
                  device_id: str = "robot_001",
                  enable_backend: bool = True,
                  mqtt_client=None,
@@ -325,7 +325,7 @@ if __name__ == "__main__":
 
     # Executor 생성 (Backend 비활성화 - 로컬 테스트)
     executor = CleaningExecutor(
-        backend_url="http://localhost:4000",
+        backend_url="http://43.200.178.189:4000",
         device_id="test_robot_001",
         enable_backend=False  # 오프라인 모드 테스트
     )
