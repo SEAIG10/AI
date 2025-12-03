@@ -50,7 +50,7 @@ class GRUPredictor:
         enable_cleaning: bool = True,
         enable_on_device_training: bool = True,
         backend_url: str = "http://43.200.178.189:4000",
-        home_id: str = "home_default",
+        home_id: str = "1",
         mqtt_broker: str = "43.200.178.189",
         mqtt_port: int = 1883
     ):
