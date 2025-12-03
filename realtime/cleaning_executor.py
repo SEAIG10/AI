@@ -22,7 +22,7 @@ class CleaningExecutor:
     """
 
     def __init__(self,
-                 backend_url: str = "https://f91e7a512125.ngrok-free.app",
+                 backend_url: str = "https://a599ad257210.ngrok-free.app",
                  device_id: str = "robot_001",
                  enable_backend: bool = True,
                  mqtt_client=None,
@@ -325,7 +325,7 @@ if __name__ == "__main__":
 
     # Executor 생성 (Backend 비활성화 - 로컬 테스트)
     executor = CleaningExecutor(
-        backend_url="https://f91e7a512125.ngrok-free.app",
+        backend_url="https://a599ad257210.ngrok-free.app",
         device_id="test_robot_001",
         enable_backend=False  # 오프라인 모드 테스트
     )

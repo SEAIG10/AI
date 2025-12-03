@@ -49,7 +49,7 @@ class GRUPredictor:
         self,
         enable_cleaning: bool = True,
         enable_on_device_training: bool = True,
-        backend_url: str = "https://f91e7a512125.ngrok-free.app",
+        backend_url: str = "https://a599ad257210.ngrok-free.app",
         home_id: str = "1",
         mqtt_broker: str = "43.200.178.189",
         mqtt_port: int = 1883
