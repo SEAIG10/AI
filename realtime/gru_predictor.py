@@ -348,7 +348,8 @@ class GRUPredictor:
                 zone_names = self.zone_manager.get_current_zones()
                 predictions_dict = {}
                 for i, zone in enumerate(zone_names):
-                    zone_name = zone.get('name', f'Zone {i}')
+                    # DB와 매칭되도록 영어 이름 사용
+                    zone_name = zone.get('name_en', zone.get('name', f'Zone {i}'))
                     if i < len(prediction):
                         predictions_dict[zone_name] = float(prediction[i])
 
