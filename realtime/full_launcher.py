@@ -125,7 +125,7 @@ def main():
         context_args = [
             "--interval", "1.0",
             "--zone", args.zone,
-            "--home-id", "6",
+            "--home-id", "1",
             "--mqtt-broker", "43.200.178.189"
         ]
 

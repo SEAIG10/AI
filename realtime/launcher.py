@@ -118,7 +118,7 @@ def main():
         context_args = [
             "--interval", "1.0",
             "--zone", zone,
-            "--home-id", "6",  # home_id 추가 (필수 인자)
+            "--home-id", "1",  # home_id 추가 (필수 인자)
             "--mqtt-broker", "43.200.178.189"
         ]
 

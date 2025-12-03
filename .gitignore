@@ -31,16 +31,14 @@ datasets/
 !datasets/*.json          # Keep JSON config files
 
 # YOLO/PyTorch models (large files)
-*.pt                      # PyTorch models
-*.onnx                    # ONNX models
+# *.pt                      # PyTorch models (commented out to commit models)
+# *.onnx                    # ONNX models (commented out to commit models)
 *.engine                  # TensorRT engines
-!yolo11n.pt              # Keep only base pretrained if needed
 
 # Models (trained weights)
-models/yolo/
-models/gru/
-models/audio/*.h5
-models
+# models/yolo/              # (commented out to commit models)
+# models/gru/               # (commented out to commit models)
+# models/audio/*.h5         # (commented out to commit models)
 # YOLO training outputs
 runs/                     # Training results and checkpoints
 weights/                  # Weight files
