@@ -37,6 +37,31 @@ def start_process(script_name, args=None, name=None):
     return process
 
 
+def start_dashboard():
+    """
+    Vite 대시보드를 별도 프로세스로 시작합니다.
+    """
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    dashboard_dir = os.path.join(project_root, "dashboard")
+
+    if not os.path.exists(dashboard_dir):
+        print("  ⚠️  Dashboard directory not found, skipping...")
+        return None
+
+    display_name = "Dashboard (Vite)"
+    print(f"  Starting: {display_name}")
+
+    # npm run dev 실행
+    process = subprocess.Popen(
+        ["npm", "run", "dev"],
+        cwd=dashboard_dir
+        # 로그를 볼 수 있도록 stdout/stderr 리다이렉트 제거
+    )
+    processes.append((display_name, process))
+
+    return process
+
+
 def cleanup():
     """실행 중인 모든 자식 프로세스를 종료합니다."""
     print("\n" + "="*60)
@@ -79,7 +104,7 @@ def main():
     print("="*60)
     print("🚀 LOCUS AI Cleaning System - Full Launcher")
     print("="*60)
-    print("\nThis script will start 5 processes:")
+    print("\nThis script will start 6 processes:")
     print("  1. GRU Predictor (ML inference)")
     print("  2. Visual Sensor (YOLOv11n + YOLOv11n-pose)")
     print("     └─ Video stream: http://localhost:5001/video_feed")
@@ -87,6 +112,8 @@ def main():
     print("  4. Context Sensor (Spatial/Time/Pose)")
     print("  5. WebSocket Bridge (Dashboard communication)")
     print("     └─ WebSocket server: ws://localhost:8080")
+    print("  6. Dashboard (Vite)")
+    print("     └─ Web UI: http://localhost:5173")
     print("\nProcesses communicate via ZeroMQ (IPC):")
     print("  - Sensors → GRU: ipc:///tmp/locus_sensors.ipc")
     print("  - GRU → Bridge: ipc:///tmp/locus_bridge.ipc")
@@ -136,14 +163,19 @@ def main():
         time.sleep(2)
 
         # 5. WebSocket Bridge
-        print("\n[5/5] WebSocket Bridge")
+        print("\n[5/6] WebSocket Bridge")
         start_process("websocket_bridge.py", name="WebSocket Bridge (ZMQ→WS)")
         time.sleep(2)
+
+        # 6. Dashboard (Vite)
+        print("\n[6/6] Dashboard (Vite)")
+        start_dashboard()
+        time.sleep(3)
 
         print("\n" + "="*60)
         print("✅ All processes started successfully!")
         print("="*60)
-        print("\n📊 Dashboard: http://localhost:3001")
+        print("\n📊 Dashboard: http://localhost:5173")
         print("📹 Video Feed: http://localhost:5001/video_feed")
         print("🔌 WebSocket: ws://localhost:8080")
         print("\n⏳ Collecting 30 timesteps before first GRU prediction...")

@@ -341,7 +341,7 @@ section {
 .prediction-chart-large {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   min-height: 280px;
 }
 
@@ -349,31 +349,44 @@ section {
   display: grid;
   grid-template-columns: 140px 1fr 80px;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1rem;
+  padding: 1.125rem 1.5rem;
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.prediction-bar-item-large:hover {
+  background: #f9fafb;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateX(4px);
 }
 
 .prediction-zone-label-large {
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: var(--text-primary);
   font-weight: 600;
+  text-transform: capitalize;
 }
 
 .prediction-bar-bg-large {
-  height: 48px;
+  height: 32px;
   background: #e8eaed;
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .prediction-bar-fill-large {
   height: 100%;
-  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: linear-gradient(90deg, var(--accent) 0%, #C4003C 100%);
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 14px;
 }
 
 .prediction-score-large {
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   color: var(--text-primary);
   font-weight: 700;
   text-align: right;
@@ -660,14 +673,14 @@ section {
 .floor-grid-large {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1.25rem;
-  min-height: 320px;
+  gap: 1.5rem;
+  min-height: 360px;
 }
 
 .floor-zone-large {
-  border: 2px solid var(--border);
-  border-radius: 20px;
-  padding: 2.5rem;
+  border: 3px solid var(--border);
+  border-radius: 24px;
+  padding: 3rem 2.5rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -679,32 +692,38 @@ section {
 }
 
 .floor-zone-large:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
 }
 
 .zone-name-large {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 800;
   color: var(--text-primary);
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .zone-pollution-large {
-  font-size: 2.5rem;
-  font-weight: 800;
+  font-size: 4rem;
+  font-weight: 900;
   color: var(--text-primary);
-  margin-bottom: 0.75rem;
-  letter-spacing: -1px;
+  margin-bottom: 1rem;
+  letter-spacing: -2px;
+  line-height: 1;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .zone-priority-large {
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   color: var(--text-secondary);
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1.25rem;
   background: #f0f0f2;
-  border-radius: 24px;
-  font-weight: 600;
+  border-radius: 28px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .map-legend {
@@ -732,20 +751,20 @@ section {
 .cleaning-timeline {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.875rem;
 }
 
 .timeline-task {
   display: grid;
-  grid-template-columns: 80px 1fr 50px;
+  grid-template-columns: 70px 1fr 45px;
   align-items: center;
   gap: 1rem;
-  padding: 1.125rem 1.5rem;
+  padding: 1rem 1.25rem;
   background: var(--bg-secondary);
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .timeline-task:hover {
@@ -755,69 +774,67 @@ section {
 }
 
 .timeline-task.status-completed {
-  border-left-color: var(--success);
-  opacity: 0.7;
+  opacity: 0.65;
 }
 
 .timeline-task.status-in_progress {
-  border-left-color: var(--accent);
-  background: rgba(165, 0, 52, 0.05);
+  border-color: var(--accent);
+  background: rgba(165, 0, 52, 0.03);
 }
 
 .timeline-task.status-pending {
-  border-left-color: var(--text-secondary);
+  /* Default styling */
 }
 
 .task-time {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--accent);
-  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: monospace;
 }
 
 .task-details {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .task-zone {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .task-action {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
 }
 
 .task-duration {
-  font-size: 0.8rem;
-  color: var(--warning);
-  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .task-status-badge {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .task-status-badge.completed {
-  background: rgba(52, 199, 89, 0.15);
+  background: rgba(52, 199, 89, 0.1);
   color: var(--success);
 }
 
 .task-status-badge.in_progress {
-  background: rgba(165, 0, 52, 0.15);
+  background: rgba(165, 0, 52, 0.1);
   color: var(--accent);
-  animation: spin 2s linear infinite;
 }
 
 .task-status-badge.pending {

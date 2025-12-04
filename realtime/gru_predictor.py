@@ -170,7 +170,8 @@ class GRUPredictor:
                 device_id="robot_001",
                 enable_backend=True,
                 mqtt_client=self.mqtt_client,
-                feedback_callback=self._handle_cleaning_feedback if self.enable_on_device_training else None
+                feedback_callback=self._handle_cleaning_feedback if self.enable_on_device_training else None,
+                zmq_bridge_socket=self.zmq_bridge_socket  # WebSocket Bridge로 청소 상태 전송
             )
             print("     Cleaning Executor initialized!")
         else:
@@ -309,6 +310,14 @@ class GRUPredictor:
 
             print(f"[{self.timestep_count:04d}] Synced timestep @ {timestamp_bucket:.2f}s → Buffer: {len(self.context_buffer)}/{CONTEXT_BUFFER_SIZE}")
 
+            # WebSocket Bridge: 버퍼 상태 전송
+            self.zmq_bridge_socket.send_pyobj({
+                'type': 'buffer_status',
+                'timestamp': time.time(),
+                'buffer_size': len(self.context_buffer),
+                'buffer_capacity': CONTEXT_BUFFER_SIZE
+            })
+
             # 버퍼가 가득 차면 예측 수행
             if len(self.context_buffer) == CONTEXT_BUFFER_SIZE:
                 self.predict()
@@ -344,15 +353,23 @@ class GRUPredictor:
             self.prediction_count += 1
 
             # MQTT로 오염도 예측 발행
-            if self.mqtt_client:
-                zone_names = self.zone_manager.get_current_zones()
-                predictions_dict = {}
-                for i, zone in enumerate(zone_names):
-                    # DB와 매칭되도록 영어 이름 사용
-                    zone_name = zone.get('name_en', zone.get('name', f'Zone {i}'))
-                    if i < len(prediction):
-                        predictions_dict[zone_name] = float(prediction[i])
+            zone_names = self.zone_manager.get_current_zones()
+            predictions_dict = {}
+            for i, zone in enumerate(zone_names):
+                # DB와 매칭되도록 영어 이름 사용
+                zone_name = zone.get('name_en', zone.get('name', f'Zone {i}'))
+                if i < len(prediction):
+                    predictions_dict[zone_name] = float(prediction[i])
 
+            # WebSocket Bridge로 예측 결과 전송 (대시보드용)
+            self.zmq_bridge_socket.send_pyobj({
+                'type': 'prediction',
+                'timestamp': time.time(),
+                'prediction': predictions_dict
+            })
+            print(f"📡 [Bridge] Sent prediction to WebSocket: {predictions_dict}")
+
+            if self.mqtt_client:
                 self.mqtt_client.publish_pollution_prediction(predictions_dict)
 
             # 청소 실행 (활성화된 경우)
@@ -362,6 +379,13 @@ class GRUPredictor:
 
             # 버퍼 초기화
             self.context_buffer.clear()
+
+            # WebSocket Bridge: 버퍼 리셋 & 센서 카운터 리셋 신호
+            self.zmq_bridge_socket.send_pyobj({
+                'type': 'buffer_reset',
+                'timestamp': time.time()
+            })
+
             print(f"\nBuffer cleared. Collecting next {CONTEXT_BUFFER_SIZE} timesteps...")
             print("="*60 + "\n")
 

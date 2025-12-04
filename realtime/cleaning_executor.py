@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 import time
 import json
+import zmq
 from typing import Optional
 from decision_engine import LocalDecisionEngine, CleaningDecision
 import numpy as np
@@ -26,7 +27,8 @@ class CleaningExecutor:
                  device_id: str = "robot_001",
                  enable_backend: bool = True,
                  mqtt_client=None,
-                 feedback_callback=None):
+                 feedback_callback=None,
+                 zmq_bridge_socket=None):
         """
         Args:
             backend_url: LocusBackend API URL
@@ -35,12 +37,14 @@ class CleaningExecutor:
             mqtt_client: MQTT 클라이언트 (선택)
             feedback_callback: 청소 후 오염도 피드백을 받을 콜백 함수 (선택)
                               signature: callback(actual_pollution: np.ndarray)
+            zmq_bridge_socket: WebSocket Bridge로 메시지를 보낼 ZeroMQ 소켓 (선택)
         """
         self.backend_url = backend_url
         self.device_id = device_id
         self.enable_backend = enable_backend
         self.mqtt_client = mqtt_client
         self.feedback_callback = feedback_callback
+        self.zmq_bridge_socket = zmq_bridge_socket
 
         # Decision Engine 생성
         self.decision_engine = LocalDecisionEngine(
@@ -59,6 +63,7 @@ class CleaningExecutor:
         print(f"Device ID: {self.device_id}")
         print(f"Backend URL: {self.backend_url}")
         print(f"Backend Sync: {'Enabled' if self.enable_backend else 'Disabled (Offline Mode)'}")
+        print(f"WebSocket Bridge: {'Enabled' if self.zmq_bridge_socket else 'Disabled'}")
         print(f"{'='*60}\n")
 
     async def handle_prediction(self, prediction: np.ndarray):
@@ -117,6 +122,17 @@ class CleaningExecutor:
             print(f"\n[{i}/{len(decision.path)}] 🧹 Cleaning zone: {zone}")
             print(f"   Priority: {decision.priority_order[i-1]:.2%}")
 
+            # WebSocket Bridge: 청소 시작 알림
+            if self.zmq_bridge_socket:
+                self.zmq_bridge_socket.send_pyobj({
+                    'type': 'cleaning_started',
+                    'timestamp': time.time(),
+                    'zone': zone,
+                    'priority': float(decision.priority_order[i-1]),
+                    'total_zones': len(decision.path),
+                    'current_index': i
+                })
+
             # MQTT: 청소 시작 알림
             if self.mqtt_client:
                 self.mqtt_client.publish_cleaning_status(
@@ -135,6 +151,15 @@ class CleaningExecutor:
             duration = time.time() - start_time
 
             print(f"   ✅ Zone '{zone}' cleaned!")
+
+            # WebSocket Bridge: 청소 완료 알림
+            if self.zmq_bridge_socket:
+                self.zmq_bridge_socket.send_pyobj({
+                    'type': 'cleaning_completed',
+                    'timestamp': time.time(),
+                    'zone': zone,
+                    'duration_seconds': duration
+                })
 
             # MQTT: 청소 완료 알림
             if self.mqtt_client:

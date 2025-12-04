@@ -81,22 +81,16 @@ const UnifiedDashboard: React.FC = () => {
   const [currentAction, setCurrentAction] = useState(
     'WebSocket 연결 대기 중...'
   );
-  const [zonePollutions, setZonePollutions] = useState<ZonePollution[]>([
-    { zone: 'balcony', pollution: 0.65, priority: 1 },
-    { zone: 'bedroom', pollution: 0.40, priority: 2 },
-    { zone: 'kitchen', pollution: 0.25, priority: 3 },
-    { zone: 'living_room', pollution: 0.15, priority: 4 }
-  ]);
-  const [cleaningTimeline, setCleaningTimeline] = useState<CleaningTask[]>([
-    { time: '14:30', zone: 'balcony', action: 'Deep clean', duration: 15, status: 'in_progress' },
-    { time: '14:45', zone: 'kitchen', action: 'Standard clean', duration: 12, status: 'pending' },
-    { time: '14:57', zone: 'bedroom', action: 'Light clean', duration: 8, status: 'pending' }
-  ]);
+  const [zonePollutions, setZonePollutions] = useState<ZonePollution[]>([]);
+  const [cleaningTimeline, setCleaningTimeline] = useState<CleaningTask[]>([]);
   const [estimatedTime, setEstimatedTime] = useState({
-    total: 35,
-    remaining: 30,
-    currentTask: 5
+    total: 0,
+    remaining: 0,
+    currentTask: 0
   });
+
+  // Buffer status state
+  const [bufferStatus, setBufferStatus] = useState({ size: 0, capacity: 30 });
 
   // WebSocket connection
   useEffect(() => {
@@ -287,6 +281,28 @@ const UnifiedDashboard: React.FC = () => {
               ));
             }
 
+            // Buffer status update
+            if (message.type === 'buffer_status') {
+              setBufferStatus({
+                size: message.buffer_size || 0,
+                capacity: message.buffer_capacity || 30
+              });
+            }
+
+            // Buffer reset - 센서 카운터도 리셋
+            if (message.type === 'buffer_reset') {
+              setBufferStatus({ size: 0, capacity: 30 });
+              setStats(prev => ({
+                visualMsgCount: 0,
+                audioMsgCount: 0,
+                poseMsgCount: 0,
+                locationMsgCount: 0,
+                syncedCount: 0,
+                latencyMs: prev.latencyMs
+              }));
+              console.log('[Buffer Reset] Buffer and sensor counters reset');
+            }
+
           } catch (err) {
             console.error('[Unified WS] Parsing error:', err);
           }
@@ -352,23 +368,23 @@ const UnifiedDashboard: React.FC = () => {
 
       {/* SECTION 1: Real-time Visual & Audio Context (FR2) */}
       <section className="section-visual-audio">
-        <h2 className="section-title">FR2 · 시각 & 청각 컨텍스트 인식</h2>
+        <h2 className="section-title">실시간 센서 데이터 수집</h2>
 
-        <div className="grid grid-4">
+        <div className="grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem' }}>
           {/* 1. YOLO Object Detection */}
           <div className="card">
             <div className="card-header">YOLO 객체 감지</div>
-            <div className="video-container" style={{ marginBottom: '0.75rem' }}>
+            <div className="video-container" style={{ marginBottom: '0.75rem', width: '100%', height: '240px', overflow: 'hidden', borderRadius: '12px', background: '#000' }}>
               <img
                 src="http://localhost:5001/video_feed"
                 alt="YOLO Live Stream"
-                style={{ width: '100%', height: 'auto', borderRadius: '12px', maxHeight: '180px', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                   e.currentTarget.nextElementSibling?.setAttribute('style', 'display: flex');
                 }}
               />
-              <div className="video-placeholder" style={{ display: 'none', minHeight: '180px' }}>
+              <div className="video-placeholder" style={{ display: 'none', minHeight: '240px', alignItems: 'center', justifyContent: 'center' }}>
                 <p style={{ fontSize: '0.85rem' }}>카메라 대기 중</p>
               </div>
             </div>
@@ -444,204 +460,184 @@ const UnifiedDashboard: React.FC = () => {
 
         {/* ROS Sensor Sync */}
         <div className="card" style={{ marginTop: '1rem' }}>
-          <div className="card-header">ROS 센서 동기화 - 센서 융합</div>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.875rem' }}>
-            시각, 청각, 자세 센서 스트림을 <span style={{ color: 'var(--accent)', fontWeight: '600' }}>±500ms 허용 오차</span> 윈도우로 동기화하여 Context Encoder로 전송
-          </p>
+          <div className="card-header">AI 오염도 예측 파이프라인</div>
 
-          {/* Sensor sync timeline */}
-          <div style={{ background: '#f8f9fa', padding: '1.25rem', borderRadius: '12px', marginBottom: '1rem' }}>
-            <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: '1.8' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ width: '80px', color: 'var(--text-secondary)' }}>시각</span>
-                <div style={{ flex: 1, height: '2px', background: '#e0e0e0', position: 'relative' }}>
-                  <div style={{
-                    position: 'absolute',
-                    left: '40%',
-                    top: '-6px',
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    background: 'var(--accent)'
-                  }}></div>
-                </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{stats.visualMsgCount} msgs</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ width: '80px', color: 'var(--text-secondary)' }}>청각</span>
-                <div style={{ flex: 1, height: '2px', background: '#e0e0e0', position: 'relative' }}>
-                  <div style={{
-                    position: 'absolute',
-                    left: '45%',
-                    top: '-6px',
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    background: 'var(--accent)'
-                  }}></div>
-                </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{stats.audioMsgCount} msgs</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ width: '80px', color: 'var(--text-secondary)' }}>자세</span>
-                <div style={{ flex: 1, height: '2px', background: '#e0e0e0', position: 'relative' }}>
-                  <div style={{
-                    position: 'absolute',
-                    left: '42%',
-                    top: '-6px',
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    background: 'var(--accent)'
-                  }}></div>
-                </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{stats.poseMsgCount} msgs</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ width: '80px', color: 'var(--text-secondary)' }}>위치</span>
-                <div style={{ flex: 1, height: '2px', background: '#e0e0e0', position: 'relative' }}>
-                  <div style={{
-                    position: 'absolute',
-                    left: '44%',
-                    top: '-6px',
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    background: 'var(--accent)'
-                  }}></div>
-                </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{stats.locationMsgCount} msgs</span>
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginTop: '0.75rem',
-                paddingTop: '0.75rem',
-                borderTop: '2px dashed var(--accent)'
-              }}>
-                <span style={{ width: '80px', color: 'var(--accent)', fontWeight: '700' }}>동기화</span>
-                <div style={{ flex: 1, height: '3px', background: 'var(--accent)', position: 'relative', borderRadius: '2px' }}>
-                  <div style={{
-                    position: 'absolute',
-                    left: '43%',
-                    top: '-7px',
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: 'var(--accent)',
-                    border: '3px solid white',
-                    boxShadow: '0 2px 8px rgba(165, 0, 52, 0.3)'
-                  }}></div>
-                </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: '600' }}>{stats.syncedCount} synced</span>
-              </div>
+          {/* Pipeline flow */}
+          <div style={{ background: '#f8f9fa', padding: '2.5rem 2rem', borderRadius: '12px', marginBottom: '1rem' }}>
+            <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', lineHeight: '1.8' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: '2rem', maxWidth: '100%' }}>
+                  {/* 단계 1: 병렬 센서 입력 (세로 스택) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', justifyContent: 'center' }}>
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      background: 'white',
+                      border: '2px solid var(--accent)',
+                      borderRadius: '10px',
+                      minWidth: '120px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--accent)' }}>시각</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', background: '#f8f9fa', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{stats.visualMsgCount}</div>
+                      </div>
+                      <div style={{ width: '100%', height: '3px', background: '#f0f0f0', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min((stats.visualMsgCount / Math.max(stats.visualMsgCount, stats.poseMsgCount, stats.audioMsgCount, stats.locationMsgCount, 1)) * 100, 100)}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s ease' }}></div>
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      background: 'white',
+                      border: '2px solid var(--accent)',
+                      borderRadius: '10px',
+                      minWidth: '120px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--accent)' }}>자세</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', background: '#f8f9fa', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{stats.poseMsgCount}</div>
+                      </div>
+                      <div style={{ width: '100%', height: '3px', background: '#f0f0f0', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min((stats.poseMsgCount / Math.max(stats.visualMsgCount, stats.poseMsgCount, stats.audioMsgCount, stats.locationMsgCount, 1)) * 100, 100)}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s ease' }}></div>
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      background: 'white',
+                      border: '2px solid var(--accent)',
+                      borderRadius: '10px',
+                      minWidth: '120px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--accent)' }}>청각</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', background: '#f8f9fa', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{stats.audioMsgCount}</div>
+                      </div>
+                      <div style={{ width: '100%', height: '3px', background: '#f0f0f0', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min((stats.audioMsgCount / Math.max(stats.visualMsgCount, stats.poseMsgCount, stats.audioMsgCount, stats.locationMsgCount, 1)) * 100, 100)}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s ease' }}></div>
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      background: 'white',
+                      border: '2px solid var(--accent)',
+                      borderRadius: '10px',
+                      minWidth: '120px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--accent)' }}>위치</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', background: '#f8f9fa', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{stats.locationMsgCount}</div>
+                      </div>
+                      <div style={{ width: '100%', height: '3px', background: '#f0f0f0', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min((stats.locationMsgCount / Math.max(stats.visualMsgCount, stats.poseMsgCount, stats.audioMsgCount, stats.locationMsgCount, 1)) * 100, 100)}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s ease' }}></div>
+                      </div>
+                    </div>
+                  </div>
 
-              {/* Pipeline flow */}
-              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '1.25rem', color: 'var(--accent)', fontWeight: '700', display: 'flex', alignItems: 'center' }}>→</div>
+
+                  {/* 단계 2: AI (원형 차트) */}
                   <div style={{
-                    padding: '0.75rem 1rem',
+                    padding: '1.25rem 1.5rem',
+                    background: 'white',
+                    border: bufferStatus.size === bufferStatus.capacity ? '2px solid var(--accent)' : '2px solid #e0e0e0',
+                    borderRadius: '12px',
+                    textAlign: 'center',
+                    minWidth: '140px',
+                    transition: 'border-color 0.3s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>단계 2</div>
+                    <div style={{ position: 'relative', width: '60px', height: '60px' }}>
+                      <svg width="60" height="60" style={{ transform: 'rotate(-90deg)' }}>
+                        {/* Background circle */}
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="24"
+                          fill="none"
+                          stroke="#f0f0f0"
+                          strokeWidth="8"
+                        />
+                        {/* Progress circle */}
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="24"
+                          fill="none"
+                          stroke="var(--accent)"
+                          strokeWidth="8"
+                          strokeDasharray={`${2 * Math.PI * 24}`}
+                          strokeDashoffset={`${2 * Math.PI * 24 * (1 - bufferStatus.size / bufferStatus.capacity)}`}
+                          strokeLinecap="round"
+                          style={{ transition: 'stroke-dashoffset 0.3s ease' }}
+                        />
+                      </svg>
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        color: bufferStatus.size === bufferStatus.capacity ? 'var(--accent)' : 'var(--text-primary)'
+                      }}>
+                        {bufferStatus.size}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: bufferStatus.size === bufferStatus.capacity ? 'var(--accent)' : 'var(--text-primary)' }}>
+                      AI
+                    </div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                      / {bufferStatus.capacity}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '1.25rem', color: 'var(--accent)', display: 'flex', alignItems: 'center' }}>→</div>
+
+                  {/* 단계 3: 오염도 예측 결과 */}
+                  <div style={{
+                    padding: '1.25rem 2rem',
                     background: 'white',
                     border: '2px solid var(--accent)',
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    minWidth: '110px'
+                    borderRadius: '12px',
+                    flex: 1,
+                    maxWidth: '500px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
                   }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>단계 1</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--accent)' }}>동기화 데이터</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>4개 센서</div>
-                  </div>
-
-                  <div style={{ fontSize: '1.25rem', color: 'var(--accent)' }}>→</div>
-
-                  <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'white',
-                    border: '2px solid #e0e0e0',
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    minWidth: '110px'
-                  }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>단계 2</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-primary)' }}>컨텍스트 인코더</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>어텐션 (160차원)</div>
-                  </div>
-
-                  <div style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>→</div>
-
-                  <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'white',
-                    border: '2px solid #e0e0e0',
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    minWidth: '110px'
-                  }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>단계 3</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-primary)' }}>버퍼</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>30 타임스텝</div>
-                  </div>
-
-                  <div style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>→</div>
-
-                  <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'white',
-                    border: '2px solid #e0e0e0',
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    minWidth: '110px'
-                  }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>단계 4</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-primary)' }}>GRU 모델</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>FedPer</div>
-                  </div>
-
-                  <div style={{ fontSize: '1.25rem', color: 'var(--accent)' }}>→</div>
-
-                  <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'var(--accent)',
-                    border: '2px solid var(--accent)',
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    minWidth: '110px'
-                  }}>
-                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.8)', marginBottom: '0.2rem' }}>단계 5</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'white' }}>오염도 예측</div>
-                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.8)', marginTop: '0.2rem' }}>4개 구역</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--accent)', marginBottom: '0.25rem', textAlign: 'center' }}>
+                      오염도 예측 결과
+                    </div>
+                    {predictions.length > 0 ? (
+                      predictions.map((pred, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: '500', color: 'var(--text-primary)', minWidth: '90px' }}>
+                            {pred.zone}
+                          </div>
+                          <div style={{ flex: 1, height: '8px', background: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${pred.score * 100}%`,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, var(--accent) 0%, #C4003C 100%)',
+                              transition: 'width 0.5s ease'
+                            }}></div>
+                          </div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)', minWidth: '40px', textAlign: 'right' }}>
+                            {pred.score.toFixed(2)}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '0.5rem' }}>
+                        대기 중...
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-4" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-            <div className="stat-card">
-              <div className="stat-label">시각</div>
-              <div className="stat-value-small">{stats.visualMsgCount}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">자세</div>
-              <div className="stat-value-small">{stats.poseMsgCount}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">청각</div>
-              <div className="stat-value-small">{stats.audioMsgCount}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">위치</div>
-              <div className="stat-value-small">{stats.locationMsgCount}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">동기화</div>
-              <div className="stat-value-small" style={{ color: 'var(--accent)' }}>{stats.syncedCount}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">지연시간</div>
-              <div className="stat-value-small">{stats.latencyMs}ms</div>
             </div>
           </div>
         </div>
@@ -649,7 +645,7 @@ const UnifiedDashboard: React.FC = () => {
 
       {/* SECTION 2: GRU Prediction & Floor Map */}
       <section className="section-prediction-map">
-        <h2 className="section-title">FR3 · GRU 예측 & FR5 · 청소 실행</h2>
+        <h2 className="section-title">오염도 예측 & 청소 실행</h2>
 
         <div className="grid grid-2">
           {/* Left: Prediction Results (Large) */}
@@ -667,10 +663,7 @@ const UnifiedDashboard: React.FC = () => {
                     <div className="prediction-bar-bg-large">
                       <div
                         className="prediction-bar-fill-large"
-                        style={{
-                          width: `${pred.score * 100}%`,
-                          background: pred.score > 0.5 ? 'var(--danger)' : pred.score > 0.3 ? 'var(--warning)' : 'var(--success)'
-                        }}
+                        style={{ width: `${pred.score * 100}%` }}
                       />
                     </div>
                     <div className="prediction-score-large">{pred.score.toFixed(2)}</div>
@@ -683,145 +676,103 @@ const UnifiedDashboard: React.FC = () => {
                 </div>
               )}
             </div>
-
-            <div className="prediction-explanation">
-              <div className="explanation-text">{explanation}</div>
-            </div>
           </div>
 
-          {/* Right: Floor Map (Large) */}
+          {/* Right: Cleaning Execution Status */}
           <div className="card">
-            <div className="card-header">평면도 - 오염도 히트맵</div>
+            <div className="card-header">청소 실행 상태</div>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              구역별 오염도 시각화
+              오염도 &gt; 0.5 구역 자동 청소
             </p>
 
-            <div className="floor-map-large">
-              <div className="floor-grid-large">
-                {zonePollutions.map((zone, idx) => (
-                  <div
-                    key={idx}
-                    className="floor-zone-large"
-                    style={{
-                      background: `linear-gradient(135deg, ${getPollutionColor(zone.pollution)}33 0%, ${getPollutionColor(zone.pollution)}11 100%)`,
-                      borderColor: getPollutionColor(zone.pollution)
-                    }}
-                  >
-                    <div className="zone-name-large">{zone.zone}</div>
-                    <div className="zone-pollution-large">
-                      {(zone.pollution * 100).toFixed(0)}%
+            {/* Current Action */}
+            <div className="current-action" style={{ marginBottom: '1.5rem' }}>
+              <div className="action-content">
+                <div className="action-label">현재 작업</div>
+                <div className="action-text">{currentAction}</div>
+              </div>
+              <div className="action-progress">
+                <div className="progress-circle">
+                  <svg width="80" height="80">
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="35"
+                      fill="none"
+                      stroke="var(--bg-secondary)"
+                      strokeWidth="8"
+                    />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="35"
+                      fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="8"
+                      strokeDasharray={`${estimatedTime.total > 0 ? ((estimatedTime.total - estimatedTime.remaining) / estimatedTime.total) * 220 : 0} 220`}
+                      strokeLinecap="round"
+                      transform="rotate(-90 40 40)"
+                    />
+                  </svg>
+                  <div className="progress-text">
+                    {estimatedTime.total > 0 ? Math.round(((estimatedTime.total - estimatedTime.remaining) / estimatedTime.total) * 100) : 0}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cleaning Timeline */}
+            <div className="cleaning-timeline">
+              {cleaningTimeline.length > 0 ? (
+                cleaningTimeline.map((task, idx) => (
+                  <div key={idx} className={`timeline-task status-${task.status}`}>
+                    <div className="task-time">{task.time}</div>
+                    <div className="task-details">
+                      <div className="task-zone">{task.zone}</div>
+                      <div className="task-action">{task.action}</div>
+                      <div className="task-duration">{task.duration} min</div>
                     </div>
-                    <div className="zone-priority-large">
-                      우선순위 #{zone.priority}
+                    <div className={`task-status-badge ${task.status}`}>
+                      {task.status === 'completed' && '✓'}
+                      {task.status === 'in_progress' && '⟳'}
+                      {task.status === 'pending' && '○'}
                     </div>
                   </div>
-                ))}
-              </div>
+                ))
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>청소 작업 대기 중</div>
+                  <div style={{ fontSize: '0.85rem' }}>오염도 예측 후 청소 작업이 시작됩니다</div>
+                </div>
+              )}
             </div>
 
-            {/* Map Legend */}
-            <div className="map-legend" style={{ marginTop: '1.5rem' }}>
-              <div className="legend-item">
-                <div className="legend-color" style={{ background: 'var(--danger)' }}></div>
-                <span>높음 (&gt;60%)</span>
+            {/* Summary Stats */}
+            <div className="timeline-summary" style={{ marginTop: '1.5rem' }}>
+              <div className="summary-item">
+                <span className="summary-label">완료</span>
+                <span className="summary-value" style={{ color: 'var(--accent)' }}>
+                  {cleaningTimeline.filter(t => t.status === 'completed').length}건
+                </span>
               </div>
-              <div className="legend-item">
-                <div className="legend-color" style={{ background: 'var(--warning)' }}></div>
-                <span>중간 (30-60%)</span>
+              <div className="summary-item">
+                <span className="summary-label">진행 중</span>
+                <span className="summary-value" style={{ color: 'var(--text-primary)' }}>
+                  {cleaningTimeline.filter(t => t.status === 'in_progress').length}건
+                </span>
               </div>
-              <div className="legend-item">
-                <div className="legend-color" style={{ background: 'var(--success)' }}></div>
-                <span>낮음 (&lt;30%)</span>
+              <div className="summary-item">
+                <span className="summary-label">대기</span>
+                <span className="summary-value" style={{ color: 'var(--text-secondary)' }}>
+                  {cleaningTimeline.filter(t => t.status === 'pending').length}건
+                </span>
               </div>
             </div>
           </div>
+
         </div>
       </section>
 
-      {/* SECTION 3: Cleaning Timeline */}
-      <section className="section-cleaning-timeline">
-        <h2 className="section-title">청소 실행</h2>
-
-        {/* Current Action */}
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div className="current-action">
-            <div className="action-content">
-              <div className="action-label">현재 작업</div>
-              <div className="action-text">{currentAction}</div>
-            </div>
-            <div className="action-progress">
-              <div className="progress-circle">
-                <svg width="80" height="80">
-                  <circle
-                    cx="40"
-                    cy="40"
-                    r="35"
-                    fill="none"
-                    stroke="var(--bg-secondary)"
-                    strokeWidth="8"
-                  />
-                  <circle
-                    cx="40"
-                    cy="40"
-                    r="35"
-                    fill="none"
-                    stroke="var(--accent)"
-                    strokeWidth="8"
-                    strokeDasharray={`${((estimatedTime.total - estimatedTime.remaining) / estimatedTime.total) * 220} 220`}
-                    strokeLinecap="round"
-                    transform="rotate(-90 40 40)"
-                  />
-                </svg>
-                <div className="progress-text">
-                  {Math.round(((estimatedTime.total - estimatedTime.remaining) / estimatedTime.total) * 100)}%
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Cleaning Timeline */}
-        <div className="card">
-          <div className="card-header">청소 경로 타임라인</div>
-
-          <div className="cleaning-timeline">
-            {cleaningTimeline.map((task, idx) => (
-              <div key={idx} className={`timeline-task status-${task.status}`}>
-                <div className="task-time">{task.time}</div>
-                <div className="task-details">
-                  <div className="task-zone">{task.zone}</div>
-                  <div className="task-action">{task.action}</div>
-                  <div className="task-duration">{task.duration} min</div>
-                </div>
-                <div className={`task-status-badge ${task.status}`}>
-                  {task.status === 'completed' && '✓'}
-                  {task.status === 'in_progress' && '⟳'}
-                  {task.status === 'pending' && '○'}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="timeline-summary">
-            <div className="summary-item">
-              <span className="summary-label">총 시간</span>
-              <span className="summary-value">{estimatedTime.total} 분</span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-label">남은 시간</span>
-              <span className="summary-value" style={{ color: 'var(--warning)' }}>
-                {estimatedTime.remaining} 분
-              </span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-label">현재 작업</span>
-              <span className="summary-value" style={{ color: 'var(--accent)' }}>
-                {estimatedTime.currentTask} 분
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
   );
 };
