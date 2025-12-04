@@ -414,10 +414,10 @@ class GRUPredictor:
 
     def _handle_cleaning_feedback(self, actual_pollution: np.ndarray):
         """
-        CleaningExecutor로부터 청소 후 실제 오염도 피드백을 받아 OnDeviceTrainer에 전달합니다.
+        CleaningExecutor로부터 청소 전 실제 오염도 피드백을 받아 OnDeviceTrainer에 전달합니다.
 
         Args:
-            actual_pollution: 청소 후 측정된 실제 오염도 (num_zones,)
+            actual_pollution: 청소 전 YOLO로 측정된 실제 오염도 (num_zones,)
         """
         if not self.enable_on_device_training or self.on_device_trainer is None:
             return

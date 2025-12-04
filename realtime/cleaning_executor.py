@@ -98,10 +98,13 @@ class CleaningExecutor:
 
     async def _execute_cleaning(self, decision: CleaningDecision):
         """
-        실제 청소 로직 실행
+        실제 청소 로직 실행 (개선된 피드백 학습)
 
-        TODO: 실제 로봇 모터 제어 API 연동
-        현재는 시뮬레이션 (각 구역당 대기)
+        새로운 플로우:
+        1. 각 구역으로 이동
+        2. 청소 전 YOLO 실측 -> Ground Truth 확보
+        3. GRU 예측 vs 실측 비교 -> 피드백 학습 데이터 수집
+        4. 오염물 있으면 청소, 없으면 스킵
 
         Args:
             decision: CleaningDecision 객체
@@ -109,81 +112,106 @@ class CleaningExecutor:
         self.is_cleaning = True
         self.cleaning_count += 1
 
-        print(f"\n🤖 Starting Cleaning Session #{self.cleaning_count}")
+        print(f"\n[Robot] Starting Cleaning Session #{self.cleaning_count}")
         print(f"{'='*60}")
+
+        # 피드백 학습용 데이터 수집
+        feedback_data = []
 
         for i, zone in enumerate(decision.path, 1):
             # 오버라이드 체크
             if self.current_override:
-                print(f"\n⚠️  Override Command Received: {self.current_override}")
+                print(f"\n[Warning] Override Command Received: {self.current_override}")
                 print(f"   Stopping current cleaning session...")
                 break
 
-            print(f"\n[{i}/{len(decision.path)}] 🧹 Cleaning zone: {zone}")
-            print(f"   Priority: {decision.priority_order[i-1]:.2%}")
+            print(f"\n[{i}/{len(decision.path)}] Processing zone: {zone}")
+            gru_prediction = decision.priority_order[i-1]
+            print(f"   GRU predicted: {gru_prediction:.3f}")
 
-            # WebSocket Bridge: 청소 시작 알림
-            if self.zmq_bridge_socket:
-                self.zmq_bridge_socket.send_pyobj({
-                    'type': 'cleaning_started',
-                    'timestamp': time.time(),
-                    'zone': zone,
-                    'priority': float(decision.priority_order[i-1]),
-                    'total_zones': len(decision.path),
-                    'current_index': i
-                })
+            # Step 1: 청소 전 YOLO 실측 (Ground Truth)
+            print(f"   [Measuring] actual pollution (pre-cleaning)...")
+            actual_pollution = self._measure_pollution_now(zone)
 
-            # MQTT: 청소 시작 알림
-            if self.mqtt_client:
-                self.mqtt_client.publish_cleaning_status(
-                    status="started",
-                    zone=zone,
-                    priority=float(decision.priority_order[i-1])
-                )
+            # Step 2: GRU 예측 vs 실측 비교
+            error = gru_prediction - actual_pollution
+            print(f"   [Comparison] GRU: {gru_prediction:.3f}, Actual: {actual_pollution:.3f}, Error: {error:+.3f}")
 
-            # TODO: 실제 로봇 모터 제어
-            # robot_controller.move_to_zone(zone)
-            # robot_controller.start_cleaning()
+            # 피드백 데이터 수집
+            zone_idx = self.decision_engine.zone_names.index(zone)
+            feedback_data.append((zone_idx, actual_pollution))
 
-            # 시뮬레이션: 구역당 10초 (실제로는 10분)
-            start_time = time.time()
-            await asyncio.sleep(10)
-            duration = time.time() - start_time
+            # Step 3: 실제 오염물이 있으면 청소, 없으면 스킵
+            cleaning_threshold = 0.15
 
-            print(f"   ✅ Zone '{zone}' cleaned!")
+            if actual_pollution > cleaning_threshold:
+                print(f"   [Action] Pollution detected -> Cleaning")
 
-            # WebSocket Bridge: 청소 완료 알림
-            if self.zmq_bridge_socket:
-                self.zmq_bridge_socket.send_pyobj({
-                    'type': 'cleaning_completed',
-                    'timestamp': time.time(),
-                    'zone': zone,
-                    'duration_seconds': duration
-                })
+                # WebSocket Bridge: 청소 시작 알림
+                if self.zmq_bridge_socket:
+                    self.zmq_bridge_socket.send_pyobj({
+                        'type': 'cleaning_started',
+                        'timestamp': time.time(),
+                        'zone': zone,
+                        'priority': float(gru_prediction),
+                        'total_zones': len(decision.path),
+                        'current_index': i
+                    })
 
-            # MQTT: 청소 완료 알림
-            if self.mqtt_client:
-                self.mqtt_client.publish_cleaning_result(
-                    zone=zone,
-                    duration_seconds=duration
-                )
+                # MQTT: 청소 시작 알림 (Backend 통신 - 필수!)
+                if self.mqtt_client:
+                    self.mqtt_client.publish_cleaning_status(
+                        status="started",
+                        zone=zone,
+                        priority=float(gru_prediction)
+                    )
+
+                # 청소 수행
+                start_time = time.time()
+                await asyncio.sleep(10)
+                duration = time.time() - start_time
+
+                print(f"   [Done] Zone '{zone}' cleaned!")
+
+                # WebSocket Bridge: 청소 완료 알림
+                if self.zmq_bridge_socket:
+                    self.zmq_bridge_socket.send_pyobj({
+                        'type': 'cleaning_completed',
+                        'timestamp': time.time(),
+                        'zone': zone,
+                        'duration_seconds': duration
+                    })
+
+                # MQTT: 청소 완료 알림 (Backend 통신 - 필수!)
+                if self.mqtt_client:
+                    self.mqtt_client.publish_cleaning_result(
+                        zone=zone,
+                        duration_seconds=duration
+                    )
+            else:
+                print(f"   [Skip] No cleaning needed (false positive)")
 
         self.is_cleaning = False
 
-        if not self.current_override:
+        # Step 4: 모든 구역 완료 후 피드백 학습
+        if not self.current_override and self.feedback_callback and feedback_data:
             print(f"\n{'='*60}")
             print(f"Cleaning Session #{self.cleaning_count} Completed!")
-            print(f"   Total zones cleaned: {len(decision.path)}")
-            print(f"   Total time: {decision.estimated_time} minutes (simulated)")
-            print(f"{'='*60}\n")
+            print(f"{'='*60}")
 
-            # 청소 후 오염도 측정 및 피드백
-            if self.feedback_callback:
-                actual_pollution = self._measure_pollution_after_cleaning()
-                print(f"\n[Feedback] Measured pollution after cleaning: {actual_pollution}")
-                self.feedback_callback(actual_pollution)
-        else:
-            # 오버라이드로 중단됨
+            # 구역별 실측값을 배열로 변환
+            num_zones = len(self.decision_engine.zone_names)
+            actual_pollution_array = np.zeros(num_zones, dtype=np.float32)
+
+            for zone_idx, pollution in feedback_data:
+                actual_pollution_array[zone_idx] = pollution
+
+            print(f"\n[Feedback] Ground truth: {actual_pollution_array}")
+
+            # 피드백 학습 실행
+            self.feedback_callback(actual_pollution_array)
+            print(f"{'='*60}\n")
+        elif self.current_override:
             self.current_override = None
 
     async def _send_to_backend(self, prediction: np.ndarray, decision: CleaningDecision):
@@ -234,25 +262,23 @@ class CleaningExecutor:
         except Exception as e:
             print(f"⚠️  [Backend] Unexpected error: {e}")
 
-    def _measure_pollution_after_cleaning(self) -> np.ndarray:
+    def _measure_pollution_now(self, zone: str = None) -> float:
         """
-        청소 후 실제 오염도를 YOLO로 측정합니다.
+        현재 오염도를 YOLO로 측정합니다 (Confidence 기반).
 
         YOLO로 웹캠 캡처 후 오염물(solid_waste, liquid_stain) 탐지하여
-        실제 청소 효과를 측정합니다.
+        실제 오염도를 측정합니다.
+
+        Args:
+            zone: 측정할 구역 이름 (선택, 현재는 미사용)
 
         Returns:
-            측정된 오염도 (num_zones,) numpy array
+            측정된 오염도 (0.0~1.0)
         """
         try:
             import cv2
             from ultralytics import YOLO
             import os
-
-            print(f"\n[YOLO Measurement] Measuring pollution after cleaning...")
-
-            # 1초 대기 (청소 직후 먼지 가라앉기)
-            time.sleep(1)
 
             # YOLO 모델 경로
             yolo_model_path = os.path.join(
@@ -265,63 +291,57 @@ class CleaningExecutor:
             # 웹캠에서 프레임 캡처
             cap = cv2.VideoCapture(0)
             if not cap.isOpened():
-                print("[YOLO Measurement] ⚠️  Camera not available, using fallback")
-                return self._fallback_measurement()
+                print("      ⚠️  Camera not available, using fallback")
+                return self._fallback_measurement_single()
 
             ret, frame = cap.read()
             cap.release()
 
             if not ret:
-                print("[YOLO Measurement] ⚠️  Failed to capture frame, using fallback")
-                return self._fallback_measurement()
+                print("      ⚠️  Failed to capture frame, using fallback")
+                return self._fallback_measurement_single()
 
             # YOLO로 오염물 탐지
             results = yolo_model(frame, verbose=False)
 
-            # 14차원 벡터로 변환
-            from realtime.utils import yolo_results_to_14dim
-            visual_vec = yolo_results_to_14dim(results)  # (14,)
+            # Confidence 기반 오염도 계산
+            pollution_score = 0.1  # 기본값 (깨끗함)
+            num_solid_waste = 0
+            num_liquid_stain = 0
 
-            # solid_waste(12번), liquid_stain(13번) 체크
-            solid_waste_detected = visual_vec[12]  # 0 or 1
-            liquid_stain_detected = visual_vec[13]  # 0 or 1
+            if len(results) > 0 and hasattr(results[0], 'boxes'):
+                for box in results[0].boxes:
+                    cls_id = int(box.cls[0])
+                    confidence = float(box.conf[0])  # YOLO 신뢰도 (0~1)
 
-            # 오염도 계산
-            # 오염물 없음: 0.1 (거의 깨끗)
-            # 오염물 1개: 0.3 (약간 더러움)
-            # 오염물 2개: 0.5 (여전히 더러움)
-            pollution_score = 0.1 + 0.2 * (solid_waste_detected + liquid_stain_detected)
+                    if cls_id == 12:  # solid_waste
+                        pollution_score += confidence * 0.15
+                        num_solid_waste += 1
+                    elif cls_id == 13:  # liquid_stain
+                        pollution_score += confidence * 0.20
+                        num_liquid_stain += 1
 
-            # 모든 구역에 적용 (단순화)
-            num_zones = len(self.decision_engine.zone_names)
-            actual_pollution = np.full(num_zones, pollution_score, dtype=np.float32)
+            # 최대 1.0으로 제한
+            pollution_score = min(pollution_score, 1.0)
 
             # 결과 출력
-            print(f"[YOLO Measurement] Results:")
-            print(f"  - solid_waste: {'DETECTED' if solid_waste_detected else 'NOT FOUND'}")
-            print(f"  - liquid_stain: {'DETECTED' if liquid_stain_detected else 'NOT FOUND'}")
-            print(f"  - Pollution score: {pollution_score:.2f}")
-            print(f"  - Actual pollution: {actual_pollution}")
+            print(f"      [YOLO] solid_waste: {num_solid_waste}, liquid_stain: {num_liquid_stain}")
+            print(f"      [YOLO] Pollution score: {pollution_score:.3f}")
 
-            return actual_pollution
+            return pollution_score
 
         except Exception as e:
-            print(f"[YOLO Measurement] ⚠️  Error: {e}")
-            print(f"[YOLO Measurement] Using fallback measurement")
-            import traceback
-            traceback.print_exc()
-            return self._fallback_measurement()
+            print(f"      ⚠️  YOLO error: {e}")
+            return self._fallback_measurement_single()
 
-    def _fallback_measurement(self) -> np.ndarray:
+    def _fallback_measurement_single(self) -> float:
         """
-        YOLO 측정 실패 시 폴백 (청소 후이므로 낮은 값 가정)
+        YOLO 측정 실패 시 폴백 (단일 값)
 
         Returns:
-            낮은 오염도 값
+            랜덤 오염도 값 (0.1~0.3)
         """
-        num_zones = len(self.decision_engine.zone_names)
-        # 청소 직후이므로 0.1~0.2 범위의 낮은 값
-        return np.random.uniform(0.1, 0.2, num_zones).astype(np.float32)
+        return float(np.random.uniform(0.1, 0.3))
 
     def handle_prediction_sync(self, prediction: np.ndarray):
         """
