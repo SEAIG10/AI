@@ -2,7 +2,7 @@
 
 FedPer 기반 개인화 로봇 청소 시스템 (Webots 시뮬레이션)
 
-https://four-starflower-749.notion.site/LOCUS-AI-Driven-Household-Context-Awareness-for-Predictive-Cleaning-2b139484d2c0806592aaf4e31005259c?source=copy_link
+https://four-starflower-749.notion.site/ITE351-LOCUS-2b739484d2c080ddbca4fb7c78d0d910
 
 ## Project Structure
 
